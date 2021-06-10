@@ -27,6 +27,8 @@ type Interface interface {
 	Firewalls() FirewallsService
 	// Routes retrieves the GCP routes service.
 	Routes() RoutesService
+	// Instances retrieves the GCP instances Service
+	Instances() InstancesService
 }
 
 // FirewallsService is the interface for the GCP firewalls service.
@@ -35,6 +37,10 @@ type FirewallsService interface {
 	List(projectID string) FirewallsListCall
 	// Delete initiates a FirewallsDeleteCall.
 	Delete(projectID, firewall string) FirewallsDeleteCall
+	// Get initiates a FirewallsGetCall.
+	Get(projectID, firewall string) FirewallsGetCall
+	// Insert initiates a FirewallsInsertCall.
+	Insert(projectID string, rb *compute.Firewall) FirewallsInsertCall
 }
 
 // RoutesService is the interface for the GCP routes service.
@@ -45,10 +51,36 @@ type RoutesService interface {
 	Delete(projectID, route string) RoutesDeleteCall
 }
 
+// InstancesService is the interface for the GCP Instances service.
+type InstancesService interface {
+	// Get initiates a InstancesGetCall
+	Get(projectID string, zone string, instance string) InstancesGetCall
+	// Delete initiates a InstancesDeleteCall
+	Delete(projectID string, zone string, instance string) InstancesDeleteCall
+}
+
 // FirewallsListCall is a list call to the firewalls service.
 type FirewallsListCall interface {
 	// Pages runs the given function on the paginated result of listing the firewalls.
 	Pages(context.Context, func(*compute.FirewallList) error) error
+}
+
+// FirewallsGetCall is a get call to the firewalls service.
+type FirewallsGetCall interface {
+	// Do executes the get call.
+	Do(opts ...googleapi.CallOption) (*compute.Firewall, error)
+
+	// Context sets the context for get call.
+	Context(context.Context) FirewallsGetCall
+}
+
+// FirewallsInsertCall is a insert call to the firewalls service.
+type FirewallsInsertCall interface {
+	// Do executes the insert call.
+	Do(opts ...googleapi.CallOption) (*compute.Operation, error)
+
+	// Context sets the context for Insert call.
+	Context(context.Context) FirewallsInsertCall
 }
 
 // RoutesListCall is a list call to the routes service.
@@ -71,4 +103,20 @@ type RoutesDeleteCall interface {
 	Do(opts ...googleapi.CallOption) (*compute.Operation, error)
 	// Context sets the context for the deletion call.
 	Context(context.Context) RoutesDeleteCall
+}
+
+// InstancesGetCall is a get call to the instances service.
+type InstancesGetCall interface {
+	// Do executes the get call.
+	Do(opts ...googleapi.CallOption) (*compute.Instance, error)
+	// Context sets the context for the deletion call.
+	Context(context.Context) InstancesGetCall
+}
+
+// InstancesDeleteCall is a deletion call to the instances service.
+type InstancesDeleteCall interface {
+	// Do executes the deletion call.
+	Do(opts ...googleapi.CallOption) (*compute.Operation, error)
+	// Context sets the context for the deletion call.
+	Context(context.Context) InstancesDeleteCall
 }
