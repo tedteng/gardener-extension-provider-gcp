@@ -23,6 +23,8 @@ spec:
     type: gcp
   - kind: BackupEntry
     type: gcp
+  - kind: Bastion
+    type: gcp
   - kind: ControlPlane
     type: gcp
   - kind: DNSRecord

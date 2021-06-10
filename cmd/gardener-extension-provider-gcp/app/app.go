@@ -33,6 +33,8 @@ import (
 	gcpcontrolplaneexposure "github.com/gardener/gardener-extension-provider-gcp/pkg/webhook/controlplaneexposure"
 
 	druidv1alpha1 "github.com/gardener/etcd-druid/api/v1alpha1"
+	"github.com/gardener/gardener-extension-provider-gcp/pkg/controller/bastion"
+	gcpbastion "github.com/gardener/gardener-extension-provider-gcp/pkg/controller/bastion"
 	"github.com/gardener/gardener/extensions/pkg/controller"
 	controllercmd "github.com/gardener/gardener/extensions/pkg/controller/cmd"
 	"github.com/gardener/gardener/extensions/pkg/controller/worker"
@@ -67,6 +69,11 @@ func NewControllerManagerCommand(ctx context.Context) *cobra.Command {
 
 		// options for the backupentry controller
 		backupEntryCtrlOpts = &controllercmd.ControllerOptions{
+			MaxConcurrentReconciles: 5,
+		}
+
+		// options for the bastion controller
+		bastionCtrlOpts = &controllercmd.ControllerOptions{
 			MaxConcurrentReconciles: 5,
 		}
 
@@ -119,6 +126,7 @@ func NewControllerManagerCommand(ctx context.Context) *cobra.Command {
 			mgrOpts,
 			controllercmd.PrefixOption("backupbucket-", backupBucketCtrlOpts),
 			controllercmd.PrefixOption("backupentry-", backupEntryCtrlOpts),
+			controllercmd.PrefixOption("bastion-", bastionCtrlOpts),
 			controllercmd.PrefixOption("controlplane-", controlPlaneCtrlOpts),
 			controllercmd.PrefixOption("csimigration-", csiMigrationCtrlOpts),
 			controllercmd.PrefixOption("dnsrecord-", dnsRecordCtrlOpts),
@@ -178,6 +186,7 @@ func NewControllerManagerCommand(ctx context.Context) *cobra.Command {
 			healthCheckCtrlOpts.Completed().Apply(&healthcheck.DefaultAddOptions.Controller)
 			backupBucketCtrlOpts.Completed().Apply(&gcpbackupbucket.DefaultAddOptions.Controller)
 			backupEntryCtrlOpts.Completed().Apply(&gcpbackupentry.DefaultAddOptions.Controller)
+			bastionCtrlOpts.Completed().Apply(&gcpbastion.DefaultAddOptions.Controller)
 			controlPlaneCtrlOpts.Completed().Apply(&gcpcontrolplane.DefaultAddOptions.Controller)
 			csiMigrationCtrlOpts.Completed().Apply(&gcpcsimigration.DefaultAddOptions.Controller)
 			dnsRecordCtrlOpts.Completed().Apply(&gcpdnsrecord.DefaultAddOptions.Controller)
@@ -185,6 +194,9 @@ func NewControllerManagerCommand(ctx context.Context) *cobra.Command {
 			reconcileOpts.Completed().Apply(&gcpinfrastructure.DefaultAddOptions.IgnoreOperationAnnotation)
 			reconcileOpts.Completed().Apply(&gcpcontrolplane.DefaultAddOptions.IgnoreOperationAnnotation)
 			reconcileOpts.Completed().Apply(&gcpworker.DefaultAddOptions.IgnoreOperationAnnotation)
+			reconcileOpts.Completed().Apply(&bastion.DefaultAddOptions.IgnoreOperationAnnotation)
+			reconcileOpts.Completed().Apply(&gcpbackupbucket.DefaultAddOptions.IgnoreOperationAnnotation)
+			reconcileOpts.Completed().Apply(&gcpbackupentry.DefaultAddOptions.IgnoreOperationAnnotation)
 			workerCtrlOpts.Completed().Apply(&gcpworker.DefaultAddOptions.Controller)
 
 			if _, _, err := webhookOptions.Completed().AddToManager(mgr); err != nil {
