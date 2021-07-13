@@ -65,6 +65,8 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 		}
 	}
 
+	// once a public endpoint is available, publish the endpoint on the
+	// Bastion resource to notify upstream about the ready instance
 	return controller.TryUpdateStatus(ctx, retry.DefaultBackoff, a.Client(), bastion, func() error {
 		bastion.Status.Ingress = *endpoints.public
 		return nil
@@ -80,16 +82,16 @@ func ensureFirewallRule(ctx context.Context, bastion *extensionsv1alpha1.Bastion
 
 	// create firewall if it doesn't exist yet
 	if firewall == nil {
-		return createFirewallRule(ctx, bastion, gcpclient, opt)
+		return createFirewallRule(ctx, gcpclient, opt)
 	}
 
 	return nil
 }
 
-func createFirewallRule(ctx context.Context, bastion *extensionsv1alpha1.Bastion, gcpclient gcpclient.Interface, opt *Options) error {
+func createFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) error {
 	rb := &compute.Firewall{
 		Allowed:      []*compute.FirewallAllowed{{IPProtocol: "tcp", Ports: []string{strconv.Itoa(SSHPort)}}},
-		Description:  "Allowed all traffic",
+		Description:  "SSH access for Bastion",
 		Direction:    "INGRESS",
 		TargetTags:   []string{"gardenctl"},
 		Name:         opt.FirewallName,
@@ -120,7 +122,7 @@ func ensureBastionInstance(ctx context.Context, logger logr.Logger, gcpclient gc
 	logger.Info("Running new bastion instance")
 
 	disk := &compute.Disk{
-		Description: "Gardenctl Bastion disk",
+		Description: "Bastion disk",
 		Name:        opt.DiskName,
 		SizeGb:      10,
 		SourceImage: "projects/debian-cloud/global/images/family/debian-10",
@@ -154,7 +156,7 @@ func ensureBastionInstance(ctx context.Context, logger logr.Logger, gcpclient gc
 	networkArr = append(networkArr, network)
 	machineType := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/machineTypes/n1-standard-1", opt.ProjectID, opt.Zone)
 
-	insta, err := gcpclient.Instances().Get(opt.ProjectID, opt.Zone, opt.BastionInstanceName).Context(ctx).Do()
+	instance, err := gcpclient.Instances().Get(opt.ProjectID, opt.Zone, opt.BastionInstanceName).Context(ctx).Do()
 	if err != nil {
 		gerr := err.(*googleapi.Error)
 		if gerr.Code != 404 {
@@ -167,13 +169,13 @@ func ensureBastionInstance(ctx context.Context, logger logr.Logger, gcpclient gc
 		Value: &opt.UserData,
 	})
 
-	if insta != nil {
-		logger.Info("Existing bastion compute instance found", "compute_instance_name", insta.Name)
+	if instance != nil {
+		logger.Info("Existing bastion compute instance found", "compute_instance_name", instance.Name)
 	} else {
 		instance := &compute.Instance{
 			Disks:              arr,
 			DeletionProtection: false,
-			Description:        "gardenctl bastion Instance",
+			Description:        "bastion Instance",
 			Name:               opt.BastionInstanceName,
 			Zone:               opt.Zone,
 			MachineType:        machineType,
@@ -228,7 +230,7 @@ func getInstanceEndpoints(ctx context.Context, gcpclient gcpclient.Interface, op
 
 // bastionEndpoints collects the endpoints the bastion host provides; the
 // private endpoint is important for opening a port on the worker node
-// security group to allow SSH from that node, the public endpoint is where
+// ingress firewall rule to allow SSH from that node, the public endpoint is where
 // the enduser connects to to establish the SSH connection.
 type bastionEndpoints struct {
 	private *corev1.LoadBalancerIngress

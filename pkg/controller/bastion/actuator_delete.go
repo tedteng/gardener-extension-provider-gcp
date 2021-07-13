@@ -41,7 +41,7 @@ func (a *actuator) Delete(ctx context.Context, bastion *extensionsv1alpha1.Basti
 	}
 
 	if err := removeFirewallRule(ctx, logger, bastion, gcpClient, opt); err != nil {
-		return errors.Wrap(err, "failed to remove firewal rule")
+		return errors.Wrap(err, "failed to remove firewall rule")
 	}
 
 	if err := removeBastionInstance(ctx, logger, gcpClient, opt); err != nil {
@@ -67,7 +67,7 @@ func removeFirewallRule(ctx context.Context, logger logr.Logger, bastion *extens
 	firewall, err := getFirewallRule(ctx, gcpclient, opt)
 
 	if err != nil {
-		return errors.Wrap(err, "error get firewall rule")
+		return errors.Wrap(err, "failed to get firewall rule")
 	}
 
 	if firewall == nil {
