@@ -31,7 +31,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// SSHPort is the SSH Port use in createFirewallRule
+// SSHPort is the default SSH Port used for bastion ingress firewall rule
 const (
 	SSHPort = 22
 )

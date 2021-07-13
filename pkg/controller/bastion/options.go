@@ -17,7 +17,6 @@ package bastion
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/gardener/gardener-extension-provider-gcp/pkg/gcp"
 	"github.com/gardener/gardener/extensions/pkg/controller"
@@ -29,12 +28,11 @@ import (
 // Options contains provider-related information required for setting up
 // a bastion instance. This struct combines precomputed values like the
 // bastion instance name with the IDs of pre-existing cloud provider
-// resources, like the VPC ID, subnet ID etc.
+// resources, like the Firewall name, subnet name etc.
 type Options struct {
 	Shoot               *gardencorev1beta1.Shoot
 	BastionInstanceName string
 	FirewallName        string
-	PrivateIP           string
 	PublicIP            string
 	DiskName            string
 	UserData            string
@@ -54,7 +52,7 @@ func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, 
 	publicIP := bastion.Spec.Ingress[0].IPBlock.CIDR
 	userData := string(bastion.Spec.UserData)
 	subnetwork := cluster.Shoot.Name + "-nodes"
-	zone := strings.Join(cluster.Shoot.Spec.Provider.Workers[0].Zones, " ")
+	zone := cluster.Shoot.Spec.Provider.Workers[0].Zones[0]
 
 	secret := &corev1.Secret{}
 	serviceAccountJSON, ok := secret.Data[gcp.ServiceAccountJSONField]
@@ -64,7 +62,7 @@ func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, 
 
 	projectID, err := gcp.ExtractServiceAccountProjectID(serviceAccountJSON)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to extract project id from service account: %w", err)
 	}
 
 	return &Options{
