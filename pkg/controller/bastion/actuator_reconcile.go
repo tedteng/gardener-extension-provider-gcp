@@ -16,7 +16,6 @@ package bastion
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"time"
 
@@ -51,7 +50,7 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 		return errors.Wrap(err, "failed to ensure firewall rule")
 	}
 
-	endpoints, err := ensureBastionInstance(ctx, logger, gcpclient, opt)
+	endpoints, err := ensureBastionInstance(ctx, logger, bastion, gcpclient, opt)
 	if err != nil {
 		return errors.Wrap(err, "failed to ensure bastion instance")
 	}
@@ -107,7 +106,7 @@ func createFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt 
 	return nil
 }
 
-func ensureBastionInstance(ctx context.Context, logger logr.Logger, gcpclient gcpclient.Interface, opt *Options) (*bastionEndpoints, error) {
+func ensureBastionInstance(ctx context.Context, logger logr.Logger, bastion *extensionsv1alpha1.Bastion, gcpclient gcpclient.Interface, opt *Options) (*bastionEndpoints, error) {
 	// check if the instance already exists and has an IP
 	endpoints, err := getInstanceEndpoints(ctx, gcpclient, opt)
 	if err != nil { // could not check for instance
@@ -136,50 +135,57 @@ func ensureBastionInstance(ctx context.Context, logger logr.Logger, gcpclient gc
 
 	logger.Info("Disk created", "disk", opt.DiskName)
 
-	attachedDisk := &compute.AttachedDisk{
-		AutoDelete: true,
-		Boot:       true,
-		DiskSizeGb: 10,
-		Source:     fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/disks/%s", opt.ProjectID, opt.Zone, opt.DiskName),
-		Mode:       "READ_WRITE",
+	disks := []*compute.AttachedDisk{
+		{
+			AutoDelete: true,
+			Boot:       true,
+			DiskSizeGb: 10,
+			Source:     "projects/" + opt.ProjectID + "/zones/" + opt.Zone + "/disks/" + opt.DiskName,
+			Mode:       "READ_WRITE",
+		},
 	}
 
-	arr := make([]*compute.AttachedDisk, 1)
-	arr = append(arr, attachedDisk)
-
-	network := &compute.NetworkInterface{
-		Network:       "projects/" + opt.ProjectID + "/global/networks/" + opt.Shoot.Name,
-		Subnetwork:    "regions/" + opt.Region + "/subnetworks/" + opt.Subnetwork,
-		AccessConfigs: []*compute.AccessConfig{{Name: "External NAT", Type: "ONE_TO_ONE_NAT"}},
+	networkInterfaces := []*compute.NetworkInterface{
+		{
+			Network:       "projects/" + opt.ProjectID + "/global/networks/" + opt.Shoot.Name,
+			Subnetwork:    "regions/" + opt.Region + "/subnetworks/" + opt.Subnetwork,
+			AccessConfigs: []*compute.AccessConfig{{Name: "External NAT", Type: "ONE_TO_ONE_NAT"}},
+		},
 	}
-	networkArr := make([]*compute.NetworkInterface, 1)
-	networkArr = append(networkArr, network)
-	machineType := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/machineTypes/n1-standard-1", opt.ProjectID, opt.Zone)
+
+	machineType := "zones/" + opt.Zone + "/machineTypes/n1-standard-1"
 
 	instance, err := gcpclient.Instances().Get(opt.ProjectID, opt.Zone, opt.BastionInstanceName).Context(ctx).Do()
 	if err != nil {
-		gerr := err.(*googleapi.Error)
-		if gerr.Code != 404 {
+		googleError, ok := err.(*googleapi.Error)
+		if !ok {
+			return nil, errors.New("type unknown")
+		}
+
+		if googleError.Code != 404 {
 			return nil, errors.Wrap(err, "failed to get compute instance")
 		}
 	}
-	metadataItems := make([]*compute.MetadataItems, 0)
-	metadataItems = append(metadataItems, &compute.MetadataItems{
-		Key:   "startup-script",
-		Value: &opt.UserData,
-	})
+
+	value := string(bastion.Spec.UserData)
+	metadataItems := []*compute.MetadataItems{
+		{
+			Key:   "startup-script",
+			Value: &value,
+		},
+	}
 
 	if instance != nil {
 		logger.Info("Existing bastion compute instance found", "compute_instance_name", instance.Name)
 	} else {
 		instance := &compute.Instance{
-			Disks:              arr,
+			Disks:              disks,
 			DeletionProtection: false,
-			Description:        "bastion Instance",
+			Description:        "Bastion Instance",
 			Name:               opt.BastionInstanceName,
 			Zone:               opt.Zone,
 			MachineType:        machineType,
-			NetworkInterfaces:  networkArr,
+			NetworkInterfaces:  networkInterfaces,
 			Tags:               &compute.Tags{Items: []string{"gardenctl"}},
 			Metadata:           &compute.Metadata{Items: metadataItems},
 		}
