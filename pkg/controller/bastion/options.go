@@ -36,7 +36,6 @@ type Options struct {
 	FirewallName        string
 	PublicIP            string
 	DiskName            string
-	UserData            string
 	Zone                string
 	Region              string
 	Subnetwork          string
@@ -52,7 +51,6 @@ func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, 
 	diskName := fmt.Sprintf("%s-%s-disk", name, bastion.Name)
 	publicIP := bastion.Spec.Ingress[0].IPBlock.CIDR
 	region := cluster.Shoot.Spec.Region
-	userData := string(bastion.Spec.UserData)
 	subnetwork := cluster.Shoot.Name + "-nodes"
 	zone := getZone(cluster, region)
 
@@ -75,7 +73,6 @@ func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, 
 		Zone:                zone,
 		DiskName:            diskName,
 		PublicIP:            publicIP,
-		UserData:            userData,
 		Subnetwork:          subnetwork,
 		ProjectID:           projectID,
 	}, nil

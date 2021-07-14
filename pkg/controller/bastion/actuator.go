@@ -66,7 +66,11 @@ func (a *actuator) getGCPClient(ctx context.Context, bastion *extensionsv1alpha1
 func getBastionInstance(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (*compute.Instance, error) {
 	instance, err := gcpclient.Instances().Get(opt.ProjectID, opt.Zone, opt.BastionInstanceName).Context(ctx).Do()
 	if err != nil {
-		googleError := err.(*googleapi.Error)
+		googleError, ok := err.(*googleapi.Error)
+		if !ok {
+			return nil, fmt.Errorf("type unknown")
+		}
+
 		if googleError.Code == 404 {
 			logger.Info("Instance not found,", "instance_name", opt.BastionInstanceName)
 			return nil, nil
@@ -79,7 +83,11 @@ func getBastionInstance(ctx context.Context, gcpclient gcpclient.Interface, opt 
 func getFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (*compute.Firewall, error) {
 	firewall, err := gcpclient.Firewalls().Get(opt.ProjectID, opt.FirewallName).Context(ctx).Do()
 	if err != nil {
-		var googleError = err.(*googleapi.Error)
+		googleError, ok := err.(*googleapi.Error)
+		if !ok {
+			return nil, fmt.Errorf("type unknown")
+		}
+
 		if googleError.Code == 404 {
 			logger.Info("Firewall rule not found,", "firewall_rule_name", opt.FirewallName)
 			return nil, nil
