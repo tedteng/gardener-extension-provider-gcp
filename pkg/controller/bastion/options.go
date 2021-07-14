@@ -22,6 +22,7 @@ import (
 	"github.com/gardener/gardener/extensions/pkg/controller"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
+	"github.com/gardener/gardener/pkg/extensions"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -50,9 +51,10 @@ func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, 
 	firewallName := fmt.Sprintf("%s-allow-ssh-access", bastionInstanceName)
 	diskName := fmt.Sprintf("%s-%s-disk", name, bastion.Name)
 	publicIP := bastion.Spec.Ingress[0].IPBlock.CIDR
+	region := cluster.Shoot.Spec.Region
 	userData := string(bastion.Spec.UserData)
 	subnetwork := cluster.Shoot.Name + "-nodes"
-	zone := cluster.Shoot.Spec.Provider.Workers[0].Zones[0]
+	zone := getZone(cluster, region)
 
 	secret := &corev1.Secret{}
 	serviceAccountJSON, ok := secret.Data[gcp.ServiceAccountJSONField]
@@ -69,6 +71,7 @@ func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, 
 		Shoot:               cluster.Shoot,
 		BastionInstanceName: bastionInstanceName,
 		FirewallName:        firewallName,
+		Region:              region,
 		Zone:                zone,
 		DiskName:            diskName,
 		PublicIP:            publicIP,
@@ -76,4 +79,13 @@ func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, 
 		Subnetwork:          subnetwork,
 		ProjectID:           projectID,
 	}, nil
+}
+
+func getZone(cluster *extensions.Cluster, region string) string {
+	for _, j := range cluster.CloudProfile.Spec.Regions {
+		if j.Name == region {
+			return j.Zones[0].Name
+		}
+	}
+	return ""
 }
