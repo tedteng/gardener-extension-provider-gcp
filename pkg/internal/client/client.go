@@ -58,6 +58,10 @@ type disksGetCall struct {
 	disksGetCall *compute.DisksGetCall
 }
 
+type disksDeleteCall struct {
+	disksDeleteCall *compute.DisksDeleteCall
+}
+
 type firewallsListCall struct {
 	firewallsListCall *compute.FirewallsListCall
 }
@@ -188,6 +192,11 @@ func (d *disksService) Get(projectID string, zone string, disk string) DisksGetC
 	return &disksGetCall{d.disksService.Get(projectID, zone, disk)}
 }
 
+// Delete implements DisksService.
+func (d *disksService) Delete(projectID string, zone string, disk string) DisksDeleteCall {
+	return &disksDeleteCall{d.disksService.Delete(projectID, zone, disk)}
+}
+
 // Context implements FirewallsDeleteCall.
 func (c *firewallsDeleteCall) Context(ctx context.Context) FirewallsDeleteCall {
 	return &firewallsDeleteCall{c.firewallsDeleteCall.Context(ctx)}
@@ -276,4 +285,14 @@ func (c *disksGetCall) Do(opts ...googleapi.CallOption) (*compute.Disk, error) {
 // Context implements DisksGetCall.
 func (c *disksGetCall) Context(ctx context.Context) DisksGetCall {
 	return &disksGetCall{c.disksGetCall.Context(ctx)}
+}
+
+// Do implements DisksDeleteCall.
+func (c *disksDeleteCall) Do(opts ...googleapi.CallOption) (*compute.Operation, error) {
+	return c.disksDeleteCall.Do(opts...)
+}
+
+// Context implements DisksDeleteCall.
+func (c *disksDeleteCall) Context(ctx context.Context) DisksDeleteCall {
+	return &disksDeleteCall{c.disksDeleteCall.Context(ctx)}
 }

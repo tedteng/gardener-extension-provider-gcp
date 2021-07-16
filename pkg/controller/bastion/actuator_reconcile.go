@@ -26,9 +26,9 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	"google.golang.org/api/compute/v1"
-	"google.golang.org/api/googleapi"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -45,7 +45,7 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 		return errors.Wrap(err, "failed to setup GCP options")
 	}
 
-	err = ensureFirewallRule(ctx, bastion, gcpclient, opt)
+	err = ensureFirewallRule(ctx, gcpclient, opt)
 	if err != nil {
 		return errors.Wrap(err, "failed to ensure firewall rule")
 	}
@@ -73,7 +73,7 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 
 }
 
-func ensureFirewallRule(ctx context.Context, bastion *extensionsv1alpha1.Bastion, gcpclient gcpclient.Interface, opt *Options) error {
+func ensureFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) error {
 	firewall, err := getFirewallRule(ctx, gcpclient, opt)
 	if err != nil {
 		return errors.Wrap(err, "could not get firewall rule")
@@ -92,7 +92,7 @@ func createFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt 
 		Allowed:      []*compute.FirewallAllowed{{IPProtocol: "tcp", Ports: []string{strconv.Itoa(SSHPort)}}},
 		Description:  "SSH access for Bastion",
 		Direction:    "INGRESS",
-		TargetTags:   []string{"gardenctl"},
+		TargetTags:   []string{opt.BastionInstanceName},
 		Name:         opt.FirewallName,
 		Network:      "projects/" + opt.ProjectID + "/global/networks/" + opt.Shoot.Name,
 		SourceRanges: []string{opt.PublicIP},
@@ -120,17 +120,24 @@ func ensureBastionInstance(ctx context.Context, logger logr.Logger, bastion *ext
 
 	logger.Info("Running new bastion instance")
 
-	disk := &compute.Disk{
-		Description: "Bastion disk",
-		Name:        opt.DiskName,
-		SizeGb:      10,
-		SourceImage: "projects/debian-cloud/global/images/family/debian-10",
-		Zone:        opt.Zone,
+	disk, err := getDisk(ctx, gcpclient, opt)
+	if err != nil {
+		return nil, err
 	}
 
-	_, err = gcpclient.Disks().Insert(opt.ProjectID, opt.Zone, disk).Context(ctx).Do()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create disk")
+	if disk == nil {
+		disk = &compute.Disk{
+			Description: "Gardenctl Bastion disk",
+			Name:        opt.DiskName,
+			SizeGb:      10,
+			SourceImage: "projects/debian-cloud/global/images/family/debian-10",
+			Zone:        opt.Zone,
+		}
+
+		_, err = gcpclient.Disks().Insert(opt.ProjectID, opt.Zone, disk).Context(ctx).Do()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create disk")
+		}
 	}
 
 	logger.Info("Disk created", "disk", opt.DiskName)
@@ -155,23 +162,15 @@ func ensureBastionInstance(ctx context.Context, logger logr.Logger, bastion *ext
 
 	machineType := "zones/" + opt.Zone + "/machineTypes/n1-standard-1"
 
-	instance, err := gcpclient.Instances().Get(opt.ProjectID, opt.Zone, opt.BastionInstanceName).Context(ctx).Do()
+	instance, err := getBastionInstance(ctx, gcpclient, opt)
 	if err != nil {
-		googleError, ok := err.(*googleapi.Error)
-		if !ok {
-			return nil, errors.New("type unknown")
-		}
-
-		if googleError.Code != 404 {
-			return nil, errors.Wrap(err, "failed to get compute instance")
-		}
+		return nil, err
 	}
 
-	value := string(bastion.Spec.UserData)
 	metadataItems := []*compute.MetadataItems{
 		{
 			Key:   "startup-script",
-			Value: &value,
+			Value: pointer.StringPtr(string(bastion.Spec.UserData)),
 		},
 	}
 
@@ -186,7 +185,7 @@ func ensureBastionInstance(ctx context.Context, logger logr.Logger, bastion *ext
 			Zone:               opt.Zone,
 			MachineType:        machineType,
 			NetworkInterfaces:  networkInterfaces,
-			Tags:               &compute.Tags{Items: []string{"gardenctl"}},
+			Tags:               &compute.Tags{Items: []string{opt.BastionInstanceName}},
 			Metadata:           &compute.Metadata{Items: metadataItems},
 		}
 
@@ -216,14 +215,12 @@ func getInstanceEndpoints(ctx context.Context, gcpclient gcpclient.Interface, op
 	}
 
 	if instance.NetworkInterfaces == nil || len(instance.NetworkInterfaces) == 0 {
-		err := errors.New("no network interfaces found")
-		logger.Error(err, "no network interfaces found", "compute_instance", instance.Name)
+		err := errors.New(instance.Name + ":" + "no network interfaces found")
 		return nil, err
 	}
 
 	if instance.NetworkInterfaces[0].AccessConfigs == nil || len(instance.NetworkInterfaces[0].AccessConfigs) == 0 {
-		err := errors.New("no access config found for network interface")
-		logger.Error(err, "no access config found for network interface", "compute_instance", instance.Name)
+		err := errors.New(instance.Name + ":" + "no access config found for network interface")
 		return nil, err
 	}
 
