@@ -67,6 +67,8 @@ type InstancesService interface {
 type DisksService interface {
 	// Get initiates a DisksServiceCall
 	Get(projectID string, zone string, disk string) DisksGetCall
+	// Delete initiates a DisksDeleteCall
+	Delete(project string, zone string, disk string) DisksDeleteCall
 	// Insert initiates a DisksServiceCall
 	Insert(projectID string, zone string, disk *compute.Disk) DisksInsertCall
 }
@@ -152,4 +154,11 @@ type DisksGetCall interface {
 	Do(opts ...googleapi.CallOption) (*compute.Disk, error)
 	// Context sets the context for the get call.
 	Context(context.Context) DisksGetCall
+}
+
+type DisksDeleteCall interface {
+	// Do executes the delete call.
+	Do(opts ...googleapi.CallOption) (*compute.Operation, error)
+	// Context sets the context for the delete call.
+	Context(context.Context) DisksDeleteCall
 }

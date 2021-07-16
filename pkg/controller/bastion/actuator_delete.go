@@ -48,16 +48,20 @@ func (a *actuator) Delete(ctx context.Context, bastion *extensionsv1alpha1.Basti
 		return errors.Wrap(err, "failed to remove bastion instance")
 	}
 
-	terminated, err := instanceIsTerminated(ctx, gcpClient, opt)
+	deleted, err := isInstanceDeleted(ctx, gcpClient, opt)
 	if err != nil {
 		return errors.Wrap(err, "failed to check for bastion instance")
 	}
 
-	if !terminated {
+	if !deleted {
 		return &ctrlerror.RequeueAfterError{
 			RequeueAfter: 10 * time.Second,
-			Cause:        errors.New("bastion instance is still terminating"),
+			Cause:        errors.New("bastion instance is still deleting"),
 		}
+	}
+
+	if err := removeDisk(ctx, logger, gcpClient, opt); err != nil {
+		return errors.Wrap(err, "failed to remove disk")
 	}
 
 	return nil
@@ -89,26 +93,40 @@ func removeBastionInstance(ctx context.Context, logger logr.Logger, gcpclient gc
 	}
 
 	if instance == nil {
-		logger.Info("No bastion instance found, nothing to terminate")
 		return nil
 	}
-
-	logger.Info("Terminating bastion instance")
 
 	if _, err := gcpclient.Instances().Delete(opt.ProjectID, opt.Zone, opt.BastionInstanceName).Context(ctx).Do(); err != nil {
 		return errors.Wrap(err, "failed to terminate bastion instance")
 	}
+
+	logger.Info("Instance removed", "rule", opt.BastionInstanceName)
 	return nil
 }
 
-func instanceIsTerminated(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (bool, error) {
+func isInstanceDeleted(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (bool, error) {
 	instance, err := getBastionInstance(ctx, gcpclient, opt)
 	if err != nil {
 		return false, err
 	}
 
-	if instance == nil {
-		return true, nil
+	return instance == nil, nil
+}
+
+func removeDisk(ctx context.Context, logger logr.Logger, gcpclient gcpclient.Interface, opt *Options) error {
+	disk, err := getDisk(ctx, gcpclient, opt)
+	if err != nil {
+		return err
 	}
-	return false, nil
+
+	if disk == nil {
+		return nil
+	}
+
+	if _, err := gcpclient.Disks().Delete(opt.ProjectID, opt.Zone, opt.DiskName).Context(ctx).Do(); err != nil {
+		return errors.Wrap(err, "failed to delete disk")
+	}
+
+	logger.Info("Disk removed", "rule", opt.DiskName)
+	return nil
 }
