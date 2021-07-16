@@ -208,6 +208,12 @@ func getInstanceEndpoints(ctx context.Context, gcpclient gcpclient.Interface, op
 		return nil, nil
 	}
 
+	if instance.Status != "RUNNING" {
+		err := errors.New("Instance not running, Status:" + instance.Status)
+		return nil, err
+
+	}
+
 	endpoints := &bastionEndpoints{}
 
 	if ingress := addressToIngress(&instance.Name, &instance.NetworkInterfaces[0].NetworkIP); ingress != nil {
