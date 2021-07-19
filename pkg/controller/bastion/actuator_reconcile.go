@@ -16,6 +16,7 @@ package bastion
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -24,7 +25,6 @@ import (
 	ctrlerror "github.com/gardener/gardener/extensions/pkg/controller/error"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	"github.com/go-logr/logr"
-	"github.com/pkg/errors"
 	"google.golang.org/api/compute/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/retry"
@@ -37,22 +37,22 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 
 	gcpclient, err := a.getGCPClient(ctx, bastion)
 	if err != nil {
-		return errors.Wrap(err, "failed to create GCP client")
+		return fmt.Errorf("%w, failed to create GCP client", err)
 	}
 
 	opt, err := DetermineOptions(ctx, bastion, cluster)
 	if err != nil {
-		return errors.Wrap(err, "failed to setup GCP options")
+		return fmt.Errorf("%w, failed to setup GCP options", err)
 	}
 
 	err = ensureFirewallRule(ctx, gcpclient, opt)
 	if err != nil {
-		return errors.Wrap(err, "failed to ensure firewall rule")
+		return fmt.Errorf("%w, failed to ensure firewall rule", err)
 	}
 
 	endpoints, err := ensureBastionInstance(ctx, logger, bastion, gcpclient, opt)
 	if err != nil {
-		return errors.Wrap(err, "failed to ensure bastion instance")
+		return fmt.Errorf("%w, failed to ensure bastion instance", err)
 	}
 
 	if !endpoints.Ready() {
@@ -60,7 +60,7 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 			// requeue rather soon, so that the user (most likely gardenctl eventually)
 			// doesn't have to wait too long for the public endpoint to become available
 			RequeueAfter: 5 * time.Second,
-			Cause:        errors.New("bastion instance has no public/private endpoints yet"),
+			Cause:        fmt.Errorf("bastion instance has no public/private endpoints yet"),
 		}
 	}
 
@@ -76,7 +76,7 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 func ensureFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) error {
 	firewall, err := getFirewallRule(ctx, gcpclient, opt)
 	if err != nil {
-		return errors.Wrap(err, "could not get firewall rule")
+		return fmt.Errorf("%w, could not get firewall rule", err)
 	}
 
 	// create firewall if it doesn't exist yet
@@ -99,7 +99,7 @@ func createFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt 
 	}
 	_, err := gcpclient.Firewalls().Insert(opt.ProjectID, rb).Context(ctx).Do()
 	if err != nil {
-		return errors.Wrap(err, "could not create firewall rule")
+		return fmt.Errorf("%w, could not create firewall rule", err)
 	}
 
 	logger.Info("Firewall created", "firewall", opt.FirewallName)
@@ -109,8 +109,8 @@ func createFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt 
 func ensureBastionInstance(ctx context.Context, logger logr.Logger, bastion *extensionsv1alpha1.Bastion, gcpclient gcpclient.Interface, opt *Options) (*bastionEndpoints, error) {
 	// check if the instance already exists and has an IP
 	endpoints, err := getInstanceEndpoints(ctx, gcpclient, opt)
-	if err != nil { // could not check for instance
-		return nil, errors.Wrap(err, "failed to check for GCP Bastion instance")
+	if err != nil {
+		return nil, fmt.Errorf("%w, failed to check for GCP Bastion instance", err)
 	}
 
 	// instance exists, though it may not be ready yet
@@ -136,7 +136,7 @@ func ensureBastionInstance(ctx context.Context, logger logr.Logger, bastion *ext
 
 		_, err = gcpclient.Disks().Insert(opt.ProjectID, opt.Zone, disk).Context(ctx).Do()
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to create disk")
+			return nil, fmt.Errorf("%w, failed to create disk", err)
 		}
 	}
 
@@ -191,7 +191,7 @@ func ensureBastionInstance(ctx context.Context, logger logr.Logger, bastion *ext
 
 		_, err = gcpclient.Instances().Insert(opt.ProjectID, opt.Zone, instance).Context(ctx).Do()
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to create instance")
+			return nil, fmt.Errorf("%w, failed to create instance", err)
 		}
 	}
 
@@ -209,8 +209,7 @@ func getInstanceEndpoints(ctx context.Context, gcpclient gcpclient.Interface, op
 	}
 
 	if instance.Status != "RUNNING" {
-		err := errors.New("Instance not running, Status:" + instance.Status)
-		return nil, err
+		return nil, fmt.Errorf("Instance not RUNNING, Status:" + instance.Status)
 
 	}
 
@@ -221,13 +220,11 @@ func getInstanceEndpoints(ctx context.Context, gcpclient gcpclient.Interface, op
 	}
 
 	if instance.NetworkInterfaces == nil || len(instance.NetworkInterfaces) == 0 {
-		err := errors.New(instance.Name + ":" + "no network interfaces found")
-		return nil, err
+		return nil, fmt.Errorf(instance.Name + ":" + "no network interfaces found")
 	}
 
 	if instance.NetworkInterfaces[0].AccessConfigs == nil || len(instance.NetworkInterfaces[0].AccessConfigs) == 0 {
-		err := errors.New(instance.Name + ":" + "no access config found for network interface")
-		return nil, err
+		return nil, fmt.Errorf(instance.Name + ":" + "no access config found for network interface")
 	}
 
 	if ingress := addressToIngress(&instance.Name, &instance.NetworkInterfaces[0].AccessConfigs[0].NatIP); ingress != nil {

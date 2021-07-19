@@ -33,7 +33,10 @@ import (
 
 // SSHPort is the default SSH Port used for bastion ingress firewall rule
 const (
-	SSHPort = 22
+	SSHPort                 = 22
+	errCodeInstanceNotFound = 404
+	errCodeFirewallNotFound = 404
+	errCodeDiskNotFound     = 404
 )
 
 type actuator struct {
@@ -66,14 +69,11 @@ func (a *actuator) getGCPClient(ctx context.Context, bastion *extensionsv1alpha1
 func getBastionInstance(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (*compute.Instance, error) {
 	instance, err := gcpclient.Instances().Get(opt.ProjectID, opt.Zone, opt.BastionInstanceName).Context(ctx).Do()
 	if err != nil {
-		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == 404 {
+		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == errCodeInstanceNotFound {
 			logger.Info("Instance not found,", "instance_name", opt.BastionInstanceName)
 			return nil, nil
-		} else if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == 409 {
-			logger.Info(instance.Name + "already exists")
-			return instance, nil
 		}
-		return nil, fmt.Errorf("failed to get Instance: %w", err)
+		return nil, err
 	}
 	return instance, nil
 }
@@ -81,14 +81,11 @@ func getBastionInstance(ctx context.Context, gcpclient gcpclient.Interface, opt 
 func getFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (*compute.Firewall, error) {
 	firewall, err := gcpclient.Firewalls().Get(opt.ProjectID, opt.FirewallName).Context(ctx).Do()
 	if err != nil {
-		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == 404 {
+		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == errCodeFirewallNotFound {
 			logger.Info("Firewall rule not found,", "firewall_rule_name", opt.FirewallName)
 			return nil, nil
-		} else if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == 409 {
-			logger.Info(firewall.Name + "already exists")
-			return firewall, nil
 		}
-		return nil, fmt.Errorf("failed to get Firewall: %w", err)
+		return nil, err
 	}
 	return firewall, nil
 }
@@ -96,14 +93,11 @@ func getFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Op
 func getDisk(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (*compute.Disk, error) {
 	disk, err := gcpclient.Disks().Get(opt.ProjectID, opt.Zone, opt.DiskName).Context(ctx).Do()
 	if err != nil {
-		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == 404 {
+		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == errCodeDiskNotFound {
 			logger.Info("Disk not found,", "disk_name", opt.DiskName)
 			return nil, nil
-		} else if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == 409 {
-			logger.Info(disk.Name + ":" + "Disk already exists")
-			return disk, nil
 		}
-		return nil, fmt.Errorf("failed to get Disk: %w", err)
+		return nil, err
 	}
 	return disk, nil
 }

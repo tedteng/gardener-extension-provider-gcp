@@ -16,6 +16,7 @@ package bastion
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	gcpclient "github.com/gardener/gardener-extension-provider-gcp/pkg/internal/client"
@@ -23,7 +24,6 @@ import (
 	ctrlerror "github.com/gardener/gardener/extensions/pkg/controller/error"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	"github.com/go-logr/logr"
-	"github.com/pkg/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -32,36 +32,36 @@ func (a *actuator) Delete(ctx context.Context, bastion *extensionsv1alpha1.Basti
 
 	opt, err := DetermineOptions(ctx, bastion, cluster)
 	if err != nil {
-		return errors.Wrap(err, "failed to setup GCP options")
+		return fmt.Errorf("%w, failed to setup GCP options", err)
 	}
 
 	gcpClient, err := a.getGCPClient(ctx, bastion)
 	if err != nil {
-		return errors.Wrap(err, "failed to create GCP client")
+		return fmt.Errorf("%w, failed to create GCP client", err)
 	}
 
 	if err := removeFirewallRule(ctx, logger, bastion, gcpClient, opt); err != nil {
-		return errors.Wrap(err, "failed to remove firewall rule")
+		return fmt.Errorf("%w, failed to remove firewall rule", err)
 	}
 
 	if err := removeBastionInstance(ctx, logger, gcpClient, opt); err != nil {
-		return errors.Wrap(err, "failed to remove bastion instance")
+		return fmt.Errorf("%w, failed to remove bastion instance", err)
 	}
 
 	deleted, err := isInstanceDeleted(ctx, gcpClient, opt)
 	if err != nil {
-		return errors.Wrap(err, "failed to check for bastion instance")
+		return fmt.Errorf("%w, failed to check for bastion instance", err)
 	}
 
 	if !deleted {
 		return &ctrlerror.RequeueAfterError{
 			RequeueAfter: 10 * time.Second,
-			Cause:        errors.New("bastion instance is still deleting"),
+			Cause:        fmt.Errorf("bastion instance is still deleting"),
 		}
 	}
 
 	if err := removeDisk(ctx, logger, gcpClient, opt); err != nil {
-		return errors.Wrap(err, "failed to remove disk")
+		return fmt.Errorf("%w, failed to remove disk", err)
 	}
 
 	return nil
@@ -71,7 +71,7 @@ func removeFirewallRule(ctx context.Context, logger logr.Logger, bastion *extens
 	firewall, err := getFirewallRule(ctx, gcpclient, opt)
 
 	if err != nil {
-		return errors.Wrap(err, "failed to get firewall rule")
+		return fmt.Errorf("%w, failed to get firewall rule", err)
 	}
 
 	if firewall == nil {
@@ -79,7 +79,7 @@ func removeFirewallRule(ctx context.Context, logger logr.Logger, bastion *extens
 	}
 
 	if _, err := gcpclient.Firewalls().Delete(opt.ProjectID, opt.FirewallName).Context(ctx).Do(); err != nil {
-		return errors.Wrap(err, "failed to delete firewall rule")
+		return fmt.Errorf("%w, failed to delete firewall rule", err)
 	}
 
 	logger.Info("Firewall rule removed", "rule", opt.FirewallName)
@@ -97,7 +97,7 @@ func removeBastionInstance(ctx context.Context, logger logr.Logger, gcpclient gc
 	}
 
 	if _, err := gcpclient.Instances().Delete(opt.ProjectID, opt.Zone, opt.BastionInstanceName).Context(ctx).Do(); err != nil {
-		return errors.Wrap(err, "failed to terminate bastion instance")
+		return fmt.Errorf("%w, failed to terminate bastion instance", err)
 	}
 
 	logger.Info("Instance removed", "rule", opt.BastionInstanceName)
@@ -124,7 +124,7 @@ func removeDisk(ctx context.Context, logger logr.Logger, gcpclient gcpclient.Int
 	}
 
 	if _, err := gcpclient.Disks().Delete(opt.ProjectID, opt.Zone, opt.DiskName).Context(ctx).Do(); err != nil {
-		return errors.Wrap(err, "failed to delete disk")
+		return fmt.Errorf("%w, failed to delete disk", err)
 	}
 
 	logger.Info("Disk removed", "rule", opt.DiskName)
