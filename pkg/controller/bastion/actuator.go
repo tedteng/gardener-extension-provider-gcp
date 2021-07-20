@@ -31,8 +31,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// SSHPort is the default SSH Port used for bastion ingress firewall rule
 const (
+	// SSHPort is the default SSH Port used for bastion ingress firewall rule
 	SSHPort                 = 22
 	errCodeInstanceNotFound = 404
 	errCodeFirewallNotFound = 404
@@ -88,6 +88,15 @@ func getFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Op
 		return nil, err
 	}
 	return firewall, nil
+}
+
+func patchFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) error {
+	rb := &compute.Firewall{SourceRanges: opt.PublicIP}
+	_, err := gcpclient.Firewalls().Patch(opt.ProjectID, opt.FirewallName, rb).Context(ctx).Do()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func getDisk(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (*compute.Disk, error) {

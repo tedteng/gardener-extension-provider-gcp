@@ -16,6 +16,7 @@ package bastion
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -56,7 +57,7 @@ func (a *actuator) Delete(ctx context.Context, bastion *extensionsv1alpha1.Basti
 	if !deleted {
 		return &ctrlerror.RequeueAfterError{
 			RequeueAfter: 10 * time.Second,
-			Cause:        fmt.Errorf("bastion instance is still deleting"),
+			Cause:        errors.New("bastion instance is still deleting"),
 		}
 	}
 

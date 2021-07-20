@@ -17,6 +17,7 @@ package bastion
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -84,6 +85,13 @@ func ensureFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt 
 		return createFirewallRule(ctx, gcpclient, opt)
 	}
 
+	a := firewall.SourceRanges
+	b := opt.PublicIP
+
+	if !reflect.DeepEqual(a, b) {
+		return patchFirewallRule(ctx, gcpclient, opt)
+	}
+
 	return nil
 }
 
@@ -95,7 +103,7 @@ func createFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt 
 		TargetTags:   []string{opt.BastionInstanceName},
 		Name:         opt.FirewallName,
 		Network:      "projects/" + opt.ProjectID + "/global/networks/" + opt.Shoot.Name,
-		SourceRanges: []string{opt.PublicIP},
+		SourceRanges: opt.PublicIP,
 	}
 	_, err := gcpclient.Firewalls().Insert(opt.ProjectID, rb).Context(ctx).Do()
 	if err != nil {

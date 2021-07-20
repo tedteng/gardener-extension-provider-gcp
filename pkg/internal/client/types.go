@@ -43,6 +43,8 @@ type FirewallsService interface {
 	Get(projectID, firewall string) FirewallsGetCall
 	// Insert initiates a FirewallsInsertCall.
 	Insert(projectID string, rb *compute.Firewall) FirewallsInsertCall
+	// Patch initiates a FirewallsPatchCall.
+	Patch(projectID string, firewall string, rb *compute.Firewall) FirewallsPatchCall
 }
 
 // RoutesService is the interface for the GCP routes service.
@@ -95,6 +97,15 @@ type FirewallsInsertCall interface {
 
 	// Context sets the context for Insert call.
 	Context(context.Context) FirewallsInsertCall
+}
+
+// FirewallsPatchCall is a patch call to the firewalls service.
+type FirewallsPatchCall interface {
+	// Do executes the patch call.
+	Do(opts ...googleapi.CallOption) (*compute.Operation, error)
+
+	// Context sets the context for patch call.
+	Context(context.Context) FirewallsPatchCall
 }
 
 // RoutesListCall is a list call to the routes service.

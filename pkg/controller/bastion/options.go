@@ -17,6 +17,7 @@ package bastion
 import (
 	"context"
 	"fmt"
+	"net"
 
 	"github.com/gardener/gardener-extension-provider-gcp/pkg/gcp"
 	"github.com/gardener/gardener/extensions/pkg/controller"
@@ -34,7 +35,7 @@ type Options struct {
 	Shoot               *gardencorev1beta1.Shoot
 	BastionInstanceName string
 	FirewallName        string
-	PublicIP            string
+	PublicIP            []string
 	DiskName            string
 	Zone                string
 	Region              string
@@ -49,7 +50,11 @@ func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, 
 	bastionInstanceName := fmt.Sprintf("%s-%s-bastion", name, bastion.Name)
 	firewallName := fmt.Sprintf("%s-allow-ssh-access", bastionInstanceName)
 	diskName := fmt.Sprintf("%s-%s-disk", name, bastion.Name)
-	publicIP := bastion.Spec.Ingress[0].IPBlock.CIDR
+	publicIP, err := ingressPermissions(ctx, bastion)
+	if err != nil {
+		return nil, err
+	}
+
 	region := cluster.Shoot.Spec.Region
 	subnetwork := cluster.Shoot.Name + "-nodes"
 	zone := getZone(cluster, region)
@@ -85,4 +90,26 @@ func getZone(cluster *extensions.Cluster, region string) string {
 		}
 	}
 	return ""
+}
+
+func ingressPermissions(ctx context.Context, bastion *extensionsv1alpha1.Bastion) ([]string, error) {
+	var publicIP []string
+	for _, ingress := range bastion.Spec.Ingress {
+		cidr := ingress.IPBlock.CIDR
+		ip, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return nil, fmt.Errorf("%w, invalid ingress CIDR %q", err, cidr)
+		}
+
+		normalisedCIDR := ipNet.String()
+
+		if ip.To4() != nil {
+			publicIP = append(publicIP, normalisedCIDR)
+		} else if ip.To16() != nil {
+			return nil, fmt.Errorf("%w, IPv6 is currently not fully supported", err)
+		}
+
+	}
+
+	return publicIP, nil
 }
