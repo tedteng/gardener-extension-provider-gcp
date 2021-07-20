@@ -172,6 +172,20 @@ func (mr *MockFirewallsServiceMockRecorder) List(arg0 interface{}) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockFirewallsService)(nil).List), arg0)
 }
 
+// Patch mocks base method.
+func (m *MockFirewallsService) Patch(arg0, arg1 string, arg2 *v1.Firewall) client.FirewallsPatchCall {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Patch", arg0, arg1, arg2)
+	ret0, _ := ret[0].(client.FirewallsPatchCall)
+	return ret0
+}
+
+// Patch indicates an expected call of Patch.
+func (mr *MockFirewallsServiceMockRecorder) Patch(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Patch", reflect.TypeOf((*MockFirewallsService)(nil).Patch), arg0, arg1, arg2)
+}
+
 // MockRoutesService is a mock of RoutesService interface.
 type MockRoutesService struct {
 	ctrl     *gomock.Controller

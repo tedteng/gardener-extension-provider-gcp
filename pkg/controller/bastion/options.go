@@ -106,6 +106,8 @@ func ingressPermissions(ctx context.Context, bastion *extensionsv1alpha1.Bastion
 		if ip.To4() != nil {
 			publicIP = append(publicIP, normalisedCIDR)
 		} else if ip.To16() != nil {
+			// Only IPv4 is supported in sourceRanges[].
+			// https://cloud.google.com/compute/docs/reference/rest/v1/firewalls/insert
 			return nil, fmt.Errorf("%w, IPv6 is currently not fully supported", err)
 		}
 
