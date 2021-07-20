@@ -82,6 +82,10 @@ type firewallsDeleteCall struct {
 	firewallsDeleteCall *compute.FirewallsDeleteCall
 }
 
+type firewallsPatchCall struct {
+	firewallsPatchCall *compute.FirewallsPatchCall
+}
+
 type routesDeleteCall struct {
 	routesDeleteCall *compute.RoutesDeleteCall
 }
@@ -155,6 +159,11 @@ func (f *firewallsService) Get(projectID string, firewall string) FirewallsGetCa
 // Insert implements FirewallsService.
 func (f *firewallsService) Insert(projectID string, rb *compute.Firewall) FirewallsInsertCall {
 	return &firewallsInsertCall{f.firewallsService.Insert(projectID, rb)}
+}
+
+// Patch implements FirewallsService.
+func (f *firewallsService) Patch(projectID string, firewall string, rb *compute.Firewall) FirewallsPatchCall {
+	return &firewallsPatchCall{f.firewallsService.Patch(projectID, firewall, rb)}
 }
 
 // List implements RoutesService.
@@ -235,6 +244,16 @@ func (c *firewallsInsertCall) Do(opts ...googleapi.CallOption) (*compute.Operati
 // Context implements FirewallsGetCall.
 func (c *firewallsInsertCall) Context(ctx context.Context) FirewallsInsertCall {
 	return &firewallsInsertCall{c.firewallsInsertCall.Context(ctx)}
+}
+
+// Do implements FirewallsPatchCall.
+func (c *firewallsPatchCall) Do(opts ...googleapi.CallOption) (*compute.Operation, error) {
+	return c.firewallsPatchCall.Do(opts...)
+}
+
+// Context implements FirewallsPatchCall.
+func (c *firewallsPatchCall) Context(ctx context.Context) FirewallsPatchCall {
+	return &firewallsPatchCall{c.firewallsPatchCall.Context(ctx)}
 }
 
 // Do implements InstancesGetCall.
