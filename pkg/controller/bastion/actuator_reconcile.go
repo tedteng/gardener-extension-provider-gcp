@@ -85,10 +85,10 @@ func ensureFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt 
 		return createFirewallRule(ctx, gcpclient, opt)
 	}
 
-	a := firewall.SourceRanges
-	b := opt.PublicIP
+	currentCIDRs := firewall.SourceRanges
+	wantedCIDRs := opt.PublicIPs
 
-	if !reflect.DeepEqual(a, b) {
+	if !reflect.DeepEqual(currentCIDRs, wantedCIDRs) {
 		return patchFirewallRule(ctx, gcpclient, opt)
 	}
 
@@ -102,8 +102,8 @@ func createFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt 
 		Direction:    "INGRESS",
 		TargetTags:   []string{opt.BastionInstanceName},
 		Name:         opt.FirewallName,
-		Network:      "projects/" + opt.ProjectID + "/global/networks/" + opt.Shoot.Name,
-		SourceRanges: opt.PublicIP,
+		Network:      opt.Network,
+		SourceRanges: opt.PublicIPs,
 	}
 	_, err := gcpclient.Firewalls().Insert(opt.ProjectID, rb).Context(ctx).Do()
 	if err != nil {
@@ -162,8 +162,8 @@ func ensureBastionInstance(ctx context.Context, logger logr.Logger, bastion *ext
 
 	networkInterfaces := []*compute.NetworkInterface{
 		{
-			Network:       "projects/" + opt.ProjectID + "/global/networks/" + opt.Shoot.Name,
-			Subnetwork:    "regions/" + opt.Region + "/subnetworks/" + opt.Subnetwork,
+			Network:       opt.Network,
+			Subnetwork:    opt.Subnetwork,
 			AccessConfigs: []*compute.AccessConfig{{Name: "External NAT", Type: "ONE_TO_ONE_NAT"}},
 		},
 	}
@@ -223,19 +223,25 @@ func getInstanceEndpoints(ctx context.Context, gcpclient gcpclient.Interface, op
 
 	endpoints := &bastionEndpoints{}
 
-	if ingress := addressToIngress(&instance.Name, &instance.NetworkInterfaces[0].NetworkIP); ingress != nil {
-		endpoints.private = ingress
-	}
+	networkInterfaces := instance.NetworkInterfaces
+	internalIP := &networkInterfaces[0].NetworkIP
+	externalIP := &networkInterfaces[0].AccessConfigs[0].NatIP
 
-	if instance.NetworkInterfaces == nil || len(instance.NetworkInterfaces) == 0 {
+	if len(networkInterfaces) == 0 {
 		return nil, fmt.Errorf(instance.Name + ":" + "no network interfaces found")
 	}
 
-	if instance.NetworkInterfaces[0].AccessConfigs == nil || len(instance.NetworkInterfaces[0].AccessConfigs) == 0 {
+	if len(networkInterfaces[0].AccessConfigs) == 0 {
 		return nil, fmt.Errorf(instance.Name + ":" + "no access config found for network interface")
 	}
 
-	if ingress := addressToIngress(&instance.Name, &instance.NetworkInterfaces[0].AccessConfigs[0].NatIP); ingress != nil {
+	if ingress := addressToIngress(&instance.Name, internalIP); ingress != nil {
+		endpoints.private = ingress
+	}
+
+	// public dns name not supported now
+	// https://cloud.google.com/compute/docs/instances/create-ptr-record#api
+	if ingress := addressToIngress(nil, externalIP); ingress != nil {
 		endpoints.public = ingress
 	}
 
@@ -265,13 +271,15 @@ func IngressReady(ingress *corev1.LoadBalancerIngress) bool {
 // addressToIngress converts the IP address into a
 // corev1.LoadBalancerIngress resource. If both arguments are nil, then
 // nil is returned.
-func addressToIngress(hostName *string, ipAddress *string) *corev1.LoadBalancerIngress {
+func addressToIngress(dnsName *string, ipAddress *string) *corev1.LoadBalancerIngress {
 	var ingress *corev1.LoadBalancerIngress
 
-	if ipAddress != nil {
+	if ipAddress != nil || dnsName != nil {
 		ingress = &corev1.LoadBalancerIngress{}
-		if hostName != nil {
-			ingress.Hostname = *hostName
+		// public dns name not supported now
+		// https://cloud.google.com/compute/docs/instances/create-ptr-record#api
+		if dnsName != nil {
+			ingress.Hostname = *dnsName
 		}
 
 		if ipAddress != nil {

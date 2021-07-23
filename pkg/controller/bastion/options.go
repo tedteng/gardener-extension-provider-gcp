@@ -35,28 +35,30 @@ type Options struct {
 	Shoot               *gardencorev1beta1.Shoot
 	BastionInstanceName string
 	FirewallName        string
-	PublicIP            []string
+	PublicIPs           []string
 	DiskName            string
 	Zone                string
-	Region              string
 	Subnetwork          string
 	ProjectID           string
+	Network             string
 }
 
 // DetermineOptions determines the required information that are required to reconcile a Bastion on GCP. This
 // function does not create any IaaS resources.
 func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, cluster *controller.Cluster) (*Options, error) {
-	name := cluster.ObjectMeta.Name
+	//Each resource name up to a maximum of 64 characters in GCP
+	//https://cloud.google.com/compute/docs/labeling-resources
+	name := cluster.Shoot.Name
 	bastionInstanceName := fmt.Sprintf("%s-%s-bastion", name, bastion.Name)
 	firewallName := fmt.Sprintf("%s-allow-ssh-access", bastionInstanceName)
 	diskName := fmt.Sprintf("%s-%s-disk", name, bastion.Name)
-	publicIP, err := ingressPermissions(ctx, bastion)
+	publicIPs, err := ingressPermissions(ctx, bastion)
 	if err != nil {
 		return nil, err
 	}
 
 	region := cluster.Shoot.Spec.Region
-	subnetwork := cluster.Shoot.Name + "-nodes"
+	subnetwork := "regions/" + region + "/subnetworks/" + cluster.ObjectMeta.Name + "-nodes"
 	zone := getZone(cluster, region)
 
 	secret := &corev1.Secret{}
@@ -70,16 +72,18 @@ func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, 
 		return nil, fmt.Errorf("failed to extract project id from service account: %w", err)
 	}
 
+	network := "projects/" + projectID + "/global/networks/" + cluster.ObjectMeta.Name
+
 	return &Options{
 		Shoot:               cluster.Shoot,
 		BastionInstanceName: bastionInstanceName,
 		FirewallName:        firewallName,
-		Region:              region,
 		Zone:                zone,
 		DiskName:            diskName,
-		PublicIP:            publicIP,
+		PublicIPs:           publicIPs,
 		Subnetwork:          subnetwork,
 		ProjectID:           projectID,
+		Network:             network,
 	}, nil
 }
 
@@ -93,7 +97,7 @@ func getZone(cluster *extensions.Cluster, region string) string {
 }
 
 func ingressPermissions(ctx context.Context, bastion *extensionsv1alpha1.Bastion) ([]string, error) {
-	var publicIP []string
+	var cidrs []string
 	for _, ingress := range bastion.Spec.Ingress {
 		cidr := ingress.IPBlock.CIDR
 		ip, ipNet, err := net.ParseCIDR(cidr)
@@ -104,7 +108,7 @@ func ingressPermissions(ctx context.Context, bastion *extensionsv1alpha1.Bastion
 		normalisedCIDR := ipNet.String()
 
 		if ip.To4() != nil {
-			publicIP = append(publicIP, normalisedCIDR)
+			cidrs = append(cidrs, normalisedCIDR)
 		} else if ip.To16() != nil {
 			// Only IPv4 is supported in sourceRanges[].
 			// https://cloud.google.com/compute/docs/reference/rest/v1/firewalls/insert
@@ -113,5 +117,5 @@ func ingressPermissions(ctx context.Context, bastion *extensionsv1alpha1.Bastion
 
 	}
 
-	return publicIP, nil
+	return cidrs, nil
 }

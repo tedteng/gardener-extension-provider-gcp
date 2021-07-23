@@ -91,7 +91,7 @@ func getFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Op
 }
 
 func patchFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) error {
-	rb := &compute.Firewall{SourceRanges: opt.PublicIP}
+	rb := &compute.Firewall{SourceRanges: opt.PublicIPs}
 	_, err := gcpclient.Firewalls().Patch(opt.ProjectID, opt.FirewallName, rb).Context(ctx).Do()
 	if err != nil {
 		return err
