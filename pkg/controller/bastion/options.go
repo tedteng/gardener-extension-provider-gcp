@@ -19,12 +19,10 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/gardener/gardener-extension-provider-gcp/pkg/gcp"
 	"github.com/gardener/gardener/extensions/pkg/controller"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	"github.com/gardener/gardener/pkg/extensions"
-	corev1 "k8s.io/api/core/v1"
 )
 
 // Options contains provider-related information required for setting up
@@ -45,7 +43,7 @@ type Options struct {
 
 // DetermineOptions determines the required information that are required to reconcile a Bastion on GCP. This
 // function does not create any IaaS resources.
-func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, cluster *controller.Cluster) (*Options, error) {
+func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, cluster *controller.Cluster, projectID string) (*Options, error) {
 	//Each resource name up to a maximum of 64 characters in GCP
 	//https://cloud.google.com/compute/docs/labeling-resources
 	name := cluster.Shoot.Name
@@ -60,17 +58,6 @@ func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, 
 	region := cluster.Shoot.Spec.Region
 	subnetwork := "regions/" + region + "/subnetworks/" + cluster.ObjectMeta.Name + "-nodes"
 	zone := getZone(cluster, region)
-
-	secret := &corev1.Secret{}
-	serviceAccountJSON, ok := secret.Data[gcp.ServiceAccountJSONField]
-	if !ok {
-		return nil, fmt.Errorf("missing %q field in secret", gcp.ServiceAccountJSONField)
-	}
-
-	projectID, err := gcp.ExtractServiceAccountProjectID(serviceAccountJSON)
-	if err != nil {
-		return nil, fmt.Errorf("failed to extract project id from service account: %w", err)
-	}
 
 	network := "projects/" + projectID + "/global/networks/" + cluster.ObjectMeta.Name
 

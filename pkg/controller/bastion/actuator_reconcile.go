@@ -41,7 +41,12 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 		return fmt.Errorf("%w, failed to create GCP client", err)
 	}
 
-	opt, err := DetermineOptions(ctx, bastion, cluster)
+	projectId, err := a.getProjectId(ctx, bastion)
+	if err != nil {
+		return fmt.Errorf("%w, failed to get projectId", err)
+	}
+
+	opt, err := DetermineOptions(ctx, bastion, cluster, projectId)
 	if err != nil {
 		return fmt.Errorf("%w, failed to setup GCP options", err)
 	}

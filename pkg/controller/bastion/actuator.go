@@ -59,11 +59,32 @@ func (a *actuator) getGCPClient(ctx context.Context, bastion *extensionsv1alpha1
 		return nil, fmt.Errorf("failed to find %q Secret: %w", v1beta1constants.SecretNameCloudProvider, err)
 	}
 
-	gcpClient, err := gcpclient.NewFromServiceAccount(ctx, secret.Data[gcp.ServiceAccountJSONField])
+	data, err := gcp.ReadServiceAccountSecret(secret)
+	if err != nil {
+		return nil, err
+	}
+
+	gcpClient, err := gcpclient.NewFromServiceAccount(ctx, data)
 	if err != nil {
 		return nil, err
 	}
 	return gcpClient, nil
+}
+
+func (a *actuator) getProjectId(ctx context.Context, bastion *extensionsv1alpha1.Bastion) (string, error) {
+	secret := &corev1.Secret{}
+	key := kubernetes.Key(bastion.Namespace, v1beta1constants.SecretNameCloudProvider)
+
+	if err := a.Client().Get(ctx, key, secret); err != nil {
+		return "", fmt.Errorf("failed to find %q Secret: %w", v1beta1constants.SecretNameCloudProvider, err)
+	}
+
+	data, err := gcp.ReadServiceAccountSecret(secret)
+	if err != nil {
+		return "", err
+	}
+
+	return gcp.ExtractServiceAccountProjectID(data)
 }
 
 func getBastionInstance(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (*compute.Instance, error) {
