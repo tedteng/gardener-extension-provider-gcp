@@ -31,14 +31,19 @@ import (
 func (a *actuator) Delete(ctx context.Context, bastion *extensionsv1alpha1.Bastion, cluster *controller.Cluster) error {
 	logger := a.logger.WithValues("bastion", client.ObjectKeyFromObject(bastion), "operation", "delete")
 
-	opt, err := DetermineOptions(ctx, bastion, cluster)
-	if err != nil {
-		return fmt.Errorf("%w, failed to setup GCP options", err)
-	}
-
 	gcpClient, err := a.getGCPClient(ctx, bastion)
 	if err != nil {
 		return fmt.Errorf("%w, failed to create GCP client", err)
+	}
+
+	projectId, err := a.getProjectId(ctx, bastion)
+	if err != nil {
+		return fmt.Errorf("%w, failed to get projectId", err)
+	}
+
+	opt, err := DetermineOptions(ctx, bastion, cluster, projectId)
+	if err != nil {
+		return fmt.Errorf("%w, failed to setup GCP options", err)
 	}
 
 	if err := removeFirewallRule(ctx, logger, bastion, gcpClient, opt); err != nil {
