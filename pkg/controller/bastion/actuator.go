@@ -99,11 +99,11 @@ func getBastionInstance(ctx context.Context, gcpclient gcpclient.Interface, opt 
 	return instance, nil
 }
 
-func getFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (*compute.Firewall, error) {
-	firewall, err := gcpclient.Firewalls().Get(opt.ProjectID, opt.FirewallName).Context(ctx).Do()
+func getFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, firewallRuleName string) (*compute.Firewall, error) {
+	firewall, err := gcpclient.Firewalls().Get(opt.ProjectID, firewallRuleName).Context(ctx).Do()
 	if err != nil {
 		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == errCodeFirewallNotFound {
-			logger.Info("Firewall rule not found,", "firewall_rule_name", opt.FirewallName)
+			logger.Info("Firewall rule not found,", "firewall_rule_name", firewallRuleName)
 			return nil, nil
 		}
 		return nil, err
@@ -111,10 +111,27 @@ func getFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Op
 	return firewall, nil
 }
 
-func patchFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) error {
-	rb := &compute.Firewall{SourceRanges: opt.PublicIPs}
-	_, err := gcpclient.Firewalls().Patch(opt.ProjectID, opt.FirewallName, rb).Context(ctx).Do()
-	if err != nil {
+func createFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, rb *compute.Firewall) error {
+	if _, err := gcpclient.Firewalls().Insert(opt.ProjectID, rb).Context(ctx).Do(); err != nil {
+		return fmt.Errorf("%w, could not create firewall rule %s", err, rb.Name)
+	}
+
+	logger.Info("Firewall created", "firewall", rb.Name)
+	return nil
+}
+
+func deletedFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, firewallRuleName string) error {
+	if _, err := gcpclient.Firewalls().Delete(opt.ProjectID, firewallRuleName).Context(ctx).Do(); err != nil {
+		return fmt.Errorf("%w, failed to delete firewall rule %s", err, firewallRuleName)
+	}
+
+	logger.Info("Firewall rule removed", "rule", firewallRuleName)
+	return nil
+}
+
+func patchFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, firewallRuleName string) error {
+	rb := &compute.Firewall{SourceRanges: opt.CIDRs}
+	if _, err := gcpclient.Firewalls().Patch(opt.ProjectID, firewallRuleName, rb).Context(ctx).Do(); err != nil {
 		return err
 	}
 	return nil

@@ -32,8 +32,7 @@ import (
 type Options struct {
 	Shoot               *gardencorev1beta1.Shoot
 	BastionInstanceName string
-	FirewallName        string
-	PublicIPs           []string
+	CIDRs               []string
 	DiskName            string
 	Zone                string
 	Subnetwork          string
@@ -44,13 +43,12 @@ type Options struct {
 // DetermineOptions determines the required information that are required to reconcile a Bastion on GCP. This
 // function does not create any IaaS resources.
 func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, cluster *controller.Cluster, projectID string) (*Options, error) {
-	//Each resource name up to a maximum of 64 characters in GCP
-	//https://cloud.google.com/compute/docs/labeling-resources
-	name := cluster.Shoot.Name
+	//Each resource name up to a maximum of 63 characters in GCP
+	//https://cloud.google.com/compute/docs/naming-resources
+	name := cluster.ObjectMeta.Name
 	bastionInstanceName := fmt.Sprintf("%s-%s-bastion", name, bastion.Name)
-	firewallName := fmt.Sprintf("%s-allow-ssh-access", bastionInstanceName)
 	diskName := fmt.Sprintf("%s-%s-disk", name, bastion.Name)
-	publicIPs, err := ingressPermissions(ctx, bastion)
+	cidrs, err := ingressPermissions(ctx, bastion)
 	if err != nil {
 		return nil, err
 	}
@@ -64,10 +62,9 @@ func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, 
 	return &Options{
 		Shoot:               cluster.Shoot,
 		BastionInstanceName: bastionInstanceName,
-		FirewallName:        firewallName,
 		Zone:                zone,
 		DiskName:            diskName,
-		PublicIPs:           publicIPs,
+		CIDRs:               cidrs,
 		Subnetwork:          subnetwork,
 		ProjectID:           projectID,
 		Network:             network,

@@ -74,21 +74,42 @@ func (a *actuator) Delete(ctx context.Context, bastion *extensionsv1alpha1.Basti
 }
 
 func removeFirewallRule(ctx context.Context, logger logr.Logger, bastion *extensionsv1alpha1.Bastion, gcpclient gcpclient.Interface, opt *Options) error {
-	firewall, err := getFirewallRule(ctx, gcpclient, opt)
-
+	rb := firewallRule(opt, ingressAllowSSH)
+	firewall, err := getFirewallRule(ctx, gcpclient, opt, rb.Name)
 	if err != nil {
 		return fmt.Errorf("%w, failed to get firewall rule", err)
 	}
 
-	if firewall == nil {
-		return nil
+	if firewall != nil {
+		if err = deletedFirewallRule(ctx, gcpclient, opt, rb.Name); err != nil {
+			return err
+		}
 	}
 
-	if _, err := gcpclient.Firewalls().Delete(opt.ProjectID, opt.FirewallName).Context(ctx).Do(); err != nil {
-		return fmt.Errorf("%w, failed to delete firewall rule", err)
+	rb = firewallRule(opt, egressDenyAll)
+	firewall, err = getFirewallRule(ctx, gcpclient, opt, rb.Name)
+	if err != nil {
+		return fmt.Errorf("%w, failed to get firewall rule", err)
 	}
 
-	logger.Info("Firewall rule removed", "rule", opt.FirewallName)
+	if firewall != nil {
+		if err = deletedFirewallRule(ctx, gcpclient, opt, rb.Name); err != nil {
+			return err
+		}
+	}
+
+	rb = firewallRule(opt, egressAllowOnly)
+	firewall, err = getFirewallRule(ctx, gcpclient, opt, rb.Name)
+	if err != nil {
+		return fmt.Errorf("%w, failed to get firewall rule", err)
+	}
+
+	if firewall != nil {
+		if err = deletedFirewallRule(ctx, gcpclient, opt, rb.Name); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

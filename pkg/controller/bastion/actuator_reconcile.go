@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strconv"
 	"time"
 
 	gcpclient "github.com/gardener/gardener-extension-provider-gcp/pkg/internal/client"
@@ -80,42 +79,37 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 }
 
 func ensureFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) error {
-	firewall, err := getFirewallRule(ctx, gcpclient, opt)
+	firwallRule := firewallRule(opt, ingressAllowSSH)
+	firewall, err := getFirewallRule(ctx, gcpclient, opt, firwallRule.Name)
 	if err != nil {
 		return fmt.Errorf("%w, could not get firewall rule", err)
 	}
 
 	// create firewall if it doesn't exist yet
 	if firewall == nil {
-		return createFirewallRule(ctx, gcpclient, opt)
+		if err = createFirewallRule(ctx, gcpclient, opt, firewallRule(opt, ingressAllowSSH)); err != nil {
+			return err
+		}
+
+		if err = createFirewallRule(ctx, gcpclient, opt, firewallRule(opt, egressDenyAll)); err != nil {
+			return err
+		}
+
+		if err = createFirewallRule(ctx, gcpclient, opt, firewallRule(opt, egressAllowOnly)); err != nil {
+			return err
+		}
+
+		return nil
 	}
 
 	currentCIDRs := firewall.SourceRanges
-	wantedCIDRs := opt.PublicIPs
+	wantedCIDRs := opt.CIDRs
 
+	firwallRule = firewallRule(opt, ingressAllowSSH)
 	if !reflect.DeepEqual(currentCIDRs, wantedCIDRs) {
-		return patchFirewallRule(ctx, gcpclient, opt)
+		return patchFirewallRule(ctx, gcpclient, opt, firwallRule.Name)
 	}
 
-	return nil
-}
-
-func createFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) error {
-	rb := &compute.Firewall{
-		Allowed:      []*compute.FirewallAllowed{{IPProtocol: "tcp", Ports: []string{strconv.Itoa(SSHPort)}}},
-		Description:  "SSH access for Bastion",
-		Direction:    "INGRESS",
-		TargetTags:   []string{opt.BastionInstanceName},
-		Name:         opt.FirewallName,
-		Network:      opt.Network,
-		SourceRanges: opt.PublicIPs,
-	}
-	_, err := gcpclient.Firewalls().Insert(opt.ProjectID, rb).Context(ctx).Do()
-	if err != nil {
-		return fmt.Errorf("%w, could not create firewall rule", err)
-	}
-
-	logger.Info("Firewall created", "firewall", opt.FirewallName)
 	return nil
 }
 
@@ -229,23 +223,26 @@ func getInstanceEndpoints(ctx context.Context, gcpclient gcpclient.Interface, op
 	endpoints := &bastionEndpoints{}
 
 	networkInterfaces := instance.NetworkInterfaces
-	internalIP := &networkInterfaces[0].NetworkIP
-	externalIP := &networkInterfaces[0].AccessConfigs[0].NatIP
 
 	if len(networkInterfaces) == 0 {
 		return nil, fmt.Errorf(instance.Name + ":" + "no network interfaces found")
 	}
 
+	internalIP := &networkInterfaces[0].NetworkIP
+
 	if len(networkInterfaces[0].AccessConfigs) == 0 {
 		return nil, fmt.Errorf(instance.Name + ":" + "no access config found for network interface")
 	}
+
+	externalIP := &networkInterfaces[0].AccessConfigs[0].NatIP
 
 	if ingress := addressToIngress(&instance.Name, internalIP); ingress != nil {
 		endpoints.private = ingress
 	}
 
-	// public dns name not supported now
-	// https://cloud.google.com/compute/docs/instances/create-ptr-record#api
+	// GCP does not automatically assign a public dns name to the instance (in contrast to e.g. AWS).
+	// As we provide an externalIP to connect to the bastion, having a public dns name would just be an alternative way to connect to the bastion.
+	// Out of this reason, we spare the effort to create a PTR record (see https://cloud.google.com/compute/docs/instances/create-ptr-record#api) just for the sake of having it.
 	if ingress := addressToIngress(nil, externalIP); ingress != nil {
 		endpoints.public = ingress
 	}
@@ -281,8 +278,10 @@ func addressToIngress(dnsName *string, ipAddress *string) *corev1.LoadBalancerIn
 
 	if ipAddress != nil || dnsName != nil {
 		ingress = &corev1.LoadBalancerIngress{}
-		// public dns name not supported now
-		// https://cloud.google.com/compute/docs/instances/create-ptr-record#api
+		// GCP does not automatically assign a public dns name to the instance (in contrast to e.g. AWS).
+		// As we provide an externalIP to connect to the bastion, having a public dns name would just be an alternative way to connect to the bastion.
+		// Out of this reason, we spare the effort to create a PTR record (see https://cloud.google.com/compute/docs/instances/create-ptr-record#api) just for the sake of having it.
+
 		if dnsName != nil {
 			ingress.Hostname = *dnsName
 		}
