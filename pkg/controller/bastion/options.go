@@ -15,7 +15,9 @@
 package bastion
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/gardener/gardener/pkg/utils"
 	"net"
 
 	"github.com/gardener/gardener/extensions/pkg/controller"
@@ -23,6 +25,10 @@ import (
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	"github.com/gardener/gardener/pkg/extensions"
 )
+
+//Maxim length for "base" name due to fact that we use this name to name other GCP resources,
+//and it's required to fit 63 character length https://cloud.google.com/compute/docs/naming-resources
+const maxLengthForBastionBaseName = 33
 
 // Options contains provider-related information required for setting up
 // a bastion instance. This struct combines precomputed values like the
@@ -39,28 +45,43 @@ type Options struct {
 	Network             string
 }
 
+type ProviderStatusRaw struct {
+	BastionComputeInstanceName string `json:"bastionComputeInstanceName"`
+	Zone                       string `json:"zone"`
+}
+
 // DetermineOptions determines the required information that are required to reconcile a Bastion on GCP. This
 // function does not create any IaaS resources.
 func DetermineOptions(bastion *extensionsv1alpha1.Bastion, cluster *controller.Cluster, projectID string) (*Options, error) {
 	//Each resource name up to a maximum of 63 characters in GCP
 	//https://cloud.google.com/compute/docs/naming-resources
-	name := cluster.ObjectMeta.Name
-	bastionInstanceName := fmt.Sprintf("%s-%s-bastion", name, bastion.Name)
-	diskName := fmt.Sprintf("%s-%s-disk", name, bastion.Name)
+	clusterName := cluster.ObjectMeta.Name
+
+	providerStatus, err := getProviderStatus(bastion)
+	if err != nil {
+		return nil, err
+	}
+
+	bastionComputeInstanceName, err := getBastionComputeInstanceName(clusterName, bastion.Name, providerStatus)
+	if err != nil {
+		return nil, err
+	}
+
+	diskName := fmt.Sprintf("%s-%s-disk", clusterName, bastion.Name)
 	cidrs, err := ingressPermissions(bastion)
 	if err != nil {
 		return nil, err
 	}
 
 	region := cluster.Shoot.Spec.Region
-	subnetwork := "regions/" + region + "/subnetworks/" + cluster.ObjectMeta.Name + "-nodes"
-	zone := getZone(cluster, region)
+	subnetwork := "regions/" + region + "/subnetworks/" + clusterName + "-nodes"
+	zone := getZone(cluster, region, providerStatus)
 
-	network := "projects/" + projectID + "/global/networks/" + cluster.ObjectMeta.Name
+	network := "projects/" + projectID + "/global/networks/" + clusterName
 
 	return &Options{
 		Shoot:               cluster.Shoot,
-		BastionInstanceName: bastionInstanceName,
+		BastionInstanceName: bastionComputeInstanceName,
 		Zone:                zone,
 		DiskName:            diskName,
 		CIDRs:               cidrs,
@@ -70,7 +91,11 @@ func DetermineOptions(bastion *extensionsv1alpha1.Bastion, cluster *controller.C
 	}, nil
 }
 
-func getZone(cluster *extensions.Cluster, region string) string {
+func getZone(cluster *extensions.Cluster, region string, providerStatus *ProviderStatusRaw) string {
+	if providerStatus != nil {
+		return providerStatus.Zone
+	}
+
 	for _, j := range cluster.CloudProfile.Spec.Regions {
 		if j.Name == region {
 			return j.Zones[0].Name
@@ -101,4 +126,50 @@ func ingressPermissions(bastion *extensionsv1alpha1.Bastion) ([]string, error) {
 	}
 
 	return cidrs, nil
+}
+
+func getBastionComputeInstanceName(clusterName string, bastionName string, providerStatus *ProviderStatusRaw) (string, error) {
+	if providerStatus != nil {
+		return providerStatus.BastionComputeInstanceName, nil
+	}
+	return generateBastionBaseResourceName(clusterName, bastionName)
+}
+
+func generateBastionBaseResourceName(clusterName string, bastionName string) (string, error) {
+	//randomName, err := utils.GenerateRandomStringFromCharset(5, "abcdefghijklmnopqrstuvwxyz")
+	randomName, err := utils.GenerateRandomStringFromCharset(5, "a") //todo remove this line
+	if err != nil {
+		return "", err
+	}
+
+	staticName := clusterName + "-" + bastionName
+
+	if len([]rune(staticName)) > maxLengthForBastionBaseName {
+		staticName = staticName[:maxLengthForBastionBaseName]
+	}
+	return fmt.Sprintf("%s-bastion-%s", staticName, randomName), nil
+}
+
+func getProviderStatus(bastion *extensionsv1alpha1.Bastion) (*ProviderStatusRaw, error) {
+	if bastion.Status.ProviderStatus != nil && bastion.Status.ProviderStatus.Raw != nil {
+		return unmarshalProviderStatus(bastion.Status.ProviderStatus.Raw)
+	}
+	return nil, nil
+}
+
+func marshalProvideStatus(zone string, bastionComputeInstanceName string) ([]byte, error) {
+	return json.Marshal(&ProviderStatusRaw{
+		BastionComputeInstanceName: bastionComputeInstanceName,
+		Zone:                       zone,
+	})
+}
+
+func unmarshalProviderStatus(bytes []byte) (*ProviderStatusRaw, error) {
+	info := &ProviderStatusRaw{}
+
+	err := json.Unmarshal(bytes, info)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse json for status.ProviderStatus")
+	}
+	return info, nil
 }
