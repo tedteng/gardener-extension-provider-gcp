@@ -15,7 +15,6 @@
 package bastion
 
 import (
-	"context"
 	"fmt"
 	"net"
 
@@ -42,13 +41,13 @@ type Options struct {
 
 // DetermineOptions determines the required information that are required to reconcile a Bastion on GCP. This
 // function does not create any IaaS resources.
-func DetermineOptions(ctx context.Context, bastion *extensionsv1alpha1.Bastion, cluster *controller.Cluster, projectID string) (*Options, error) {
+func DetermineOptions(bastion *extensionsv1alpha1.Bastion, cluster *controller.Cluster, projectID string) (*Options, error) {
 	//Each resource name up to a maximum of 63 characters in GCP
 	//https://cloud.google.com/compute/docs/naming-resources
 	name := cluster.ObjectMeta.Name
 	bastionInstanceName := fmt.Sprintf("%s-%s-bastion", name, bastion.Name)
 	diskName := fmt.Sprintf("%s-%s-disk", name, bastion.Name)
-	cidrs, err := ingressPermissions(ctx, bastion)
+	cidrs, err := ingressPermissions(bastion)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +79,7 @@ func getZone(cluster *extensions.Cluster, region string) string {
 	return ""
 }
 
-func ingressPermissions(ctx context.Context, bastion *extensionsv1alpha1.Bastion) ([]string, error) {
+func ingressPermissions(bastion *extensionsv1alpha1.Bastion) ([]string, error) {
 	var cidrs []string
 	for _, ingress := range bastion.Spec.Ingress {
 		cidr := ingress.IPBlock.CIDR

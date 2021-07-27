@@ -19,16 +19,17 @@ import (
 	"fmt"
 
 	"github.com/gardener/gardener-extension-provider-gcp/pkg/gcp"
+	"github.com/gardener/gardener/extensions/pkg/controller"
+	"github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
+	"github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
+	v1 "k8s.io/api/core/v1"
+
 	gcpclient "github.com/gardener/gardener-extension-provider-gcp/pkg/internal/client"
 	"github.com/gardener/gardener/extensions/pkg/controller/bastion"
 	"github.com/gardener/gardener/extensions/pkg/controller/common"
-	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
-	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
-	"github.com/gardener/gardener/pkg/utils/kubernetes"
 	"github.com/go-logr/logr"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
-	corev1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -49,42 +50,6 @@ func newActuator() bastion.Actuator {
 	return &actuator{
 		logger: logger,
 	}
-}
-
-func (a *actuator) getGCPClient(ctx context.Context, bastion *extensionsv1alpha1.Bastion) (gcpclient.Interface, error) {
-	secret := &corev1.Secret{}
-	key := kubernetes.Key(bastion.Namespace, v1beta1constants.SecretNameCloudProvider)
-
-	if err := a.Client().Get(ctx, key, secret); err != nil {
-		return nil, fmt.Errorf("failed to find %q Secret: %w", v1beta1constants.SecretNameCloudProvider, err)
-	}
-
-	data, err := gcp.ReadServiceAccountSecret(secret)
-	if err != nil {
-		return nil, err
-	}
-
-	gcpClient, err := gcpclient.NewFromServiceAccount(ctx, data)
-	if err != nil {
-		return nil, err
-	}
-	return gcpClient, nil
-}
-
-func (a *actuator) getProjectId(ctx context.Context, bastion *extensionsv1alpha1.Bastion) (string, error) {
-	secret := &corev1.Secret{}
-	key := kubernetes.Key(bastion.Namespace, v1beta1constants.SecretNameCloudProvider)
-
-	if err := a.Client().Get(ctx, key, secret); err != nil {
-		return "", fmt.Errorf("failed to find %q Secret: %w", v1beta1constants.SecretNameCloudProvider, err)
-	}
-
-	data, err := gcp.ReadServiceAccountSecret(secret)
-	if err != nil {
-		return "", err
-	}
-
-	return gcp.ExtractServiceAccountProjectID(data)
 }
 
 func getBastionInstance(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (*compute.Instance, error) {
@@ -147,4 +112,23 @@ func getDisk(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (
 		return nil, err
 	}
 	return disk, nil
+}
+
+func createGCPClientAndOptions(ctx context.Context, a *actuator, bastion *v1alpha1.Bastion, cluster *controller.Cluster) (gcpclient.Interface, *Options, error) {
+	serviceAccount, err := gcp.GetServiceAccount(ctx, a.Client(), v1.SecretReference{Namespace: bastion.Namespace, Name: constants.SecretNameCloudProvider})
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w, failed to get serviceaccount", err)
+	}
+
+	gcpClient, err := gcpclient.NewFromServiceAccount(ctx, serviceAccount.Raw)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w, failed to create GCP client", err)
+	}
+
+	opt, err := DetermineOptions(bastion, cluster, serviceAccount.ProjectID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w, failed to setup GCP options", err)
+	}
+
+	return gcpClient, opt, nil
 }
