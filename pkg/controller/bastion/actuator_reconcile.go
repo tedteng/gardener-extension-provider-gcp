@@ -35,27 +35,17 @@ import (
 func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Bastion, cluster *controller.Cluster) error {
 	logger := a.logger.WithValues("bastion", client.ObjectKeyFromObject(bastion), "operation", "reconcile")
 
-	gcpclient, err := a.getGCPClient(ctx, bastion)
+	gcpClient, opt, err := createGCPClientAndOptions(ctx, a, bastion, cluster)
 	if err != nil {
-		return fmt.Errorf("%w, failed to create GCP client", err)
+		return err
 	}
 
-	projectId, err := a.getProjectId(ctx, bastion)
-	if err != nil {
-		return fmt.Errorf("%w, failed to get projectId", err)
-	}
-
-	opt, err := DetermineOptions(ctx, bastion, cluster, projectId)
-	if err != nil {
-		return fmt.Errorf("%w, failed to setup GCP options", err)
-	}
-
-	err = ensureFirewallRule(ctx, gcpclient, opt)
+	err = ensureFirewallRule(ctx, gcpClient, opt)
 	if err != nil {
 		return fmt.Errorf("%w, failed to ensure firewall rule", err)
 	}
 
-	endpoints, err := ensureBastionInstance(ctx, logger, bastion, gcpclient, opt)
+	endpoints, err := ensureBastionInstance(ctx, logger, bastion, gcpClient, opt)
 	if err != nil {
 		return fmt.Errorf("%w, failed to ensure bastion instance", err)
 	}
