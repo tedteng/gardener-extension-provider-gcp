@@ -15,9 +15,9 @@
 package bastion
 
 import (
+	b64 "encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/gardener/gardener/pkg/utils"
 	"net"
 
 	"github.com/gardener/gardener/extensions/pkg/controller"
@@ -26,9 +26,10 @@ import (
 	"github.com/gardener/gardener/pkg/extensions"
 )
 
-//Maxim length for "base" name due to fact that we use this name to name other GCP resources,
+//Maximum length for "base" name due to fact that we use this name to name other GCP resources,
 //and it's required to fit 63 character length https://cloud.google.com/compute/docs/naming-resources
 const maxLengthForBastionBaseName = 33
+const maxLengthForResource = 63
 
 // Options contains provider-related information required for setting up
 // a bastion instance. This struct combines precomputed values like the
@@ -67,17 +68,16 @@ func DetermineOptions(bastion *extensionsv1alpha1.Bastion, cluster *controller.C
 		return nil, err
 	}
 
-	diskName := fmt.Sprintf("%s-%s-disk", clusterName, bastion.Name)
+	diskName := checkCreateNewResourceName(clusterName, bastion.Name, "disk")
 	cidrs, err := ingressPermissions(bastion)
 	if err != nil {
 		return nil, err
 	}
 
 	region := cluster.Shoot.Spec.Region
-	subnetwork := "regions/" + region + "/subnetworks/" + clusterName + "-nodes"
+	subnetwork := fmt.Sprintf("regions/%s/subnetworks/%s", region, checkCreateNewResourceName(clusterName, "", "nodes"))
 	zone := getZone(cluster, region, providerStatus)
-
-	network := "projects/" + projectID + "/global/networks/" + clusterName
+	network := fmt.Sprintf("projects/%s/global/networks/%s", projectID, checkCreateNewResourceName(clusterName, "", ""))
 
 	return &Options{
 		Shoot:               cluster.Shoot,
@@ -135,19 +135,30 @@ func getBastionComputeInstanceName(clusterName string, bastionName string, provi
 	return generateBastionBaseResourceName(clusterName, bastionName)
 }
 
-func generateBastionBaseResourceName(clusterName string, bastionName string) (string, error) {
-	//randomName, err := utils.GenerateRandomStringFromCharset(5, "abcdefghijklmnopqrstuvwxyz")
-	randomName, err := utils.GenerateRandomStringFromCharset(5, "a") //todo remove this line
-	if err != nil {
-		return "", err
+func checkCreateNewResourceName(clusterName string, bastionName string, resourceTypeName string) string {
+	tempBase := clusterName
+	if len(bastionName) > 0 {
+		tempBase = fmt.Sprintf("%s-%s", clusterName, bastionName)
 	}
+	if len([]rune(tempBase)) > maxLengthForResource {
+		tempBase = tempBase[:maxLengthForResource]
+	}
+	if len(resourceTypeName) > 0 {
+		if len([]rune(tempBase)) > (maxLengthForResource - len(resourceTypeName) - 1) {
+			tempBase = fmt.Sprintf("%s-%s", tempBase[:maxLengthForResource-len(resourceTypeName)-1], resourceTypeName)
+		}
+		tempBase = fmt.Sprintf("%s-%s", tempBase, resourceTypeName)
+	}
+	return tempBase
+}
 
+func generateBastionBaseResourceName(clusterName string, bastionName string) (string, error) {
 	staticName := clusterName + "-" + bastionName
-
+	hashName := b64.StdEncoding.EncodeToString([]byte(staticName))
 	if len([]rune(staticName)) > maxLengthForBastionBaseName {
 		staticName = staticName[:maxLengthForBastionBaseName]
 	}
-	return fmt.Sprintf("%s-bastion-%s", staticName, randomName), nil
+	return fmt.Sprintf("%s-bastion-%s", staticName, hashName[:5]), nil
 }
 
 func getProviderStatus(bastion *extensionsv1alpha1.Bastion) (*ProviderStatusRaw, error) {
