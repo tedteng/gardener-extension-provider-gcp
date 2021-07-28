@@ -37,6 +37,7 @@ type Options struct {
 	Subnetwork          string
 	ProjectID           string
 	Network             string
+	WorkersCIDR         string
 }
 
 // DetermineOptions determines the required information that are required to reconcile a Bastion on GCP. This
@@ -57,6 +58,10 @@ func DetermineOptions(bastion *extensionsv1alpha1.Bastion, cluster *controller.C
 	zone := getZone(cluster, region)
 
 	network := "projects/" + projectID + "/global/networks/" + cluster.ObjectMeta.Name
+	workersCidr, err := getWorkersCIDR(cluster.Shoot)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Options{
 		Shoot:               cluster.Shoot,
@@ -67,6 +72,7 @@ func DetermineOptions(bastion *extensionsv1alpha1.Bastion, cluster *controller.C
 		Subnetwork:          subnetwork,
 		ProjectID:           projectID,
 		Network:             network,
+		WorkersCIDR:         workersCidr,
 	}, nil
 }
 
