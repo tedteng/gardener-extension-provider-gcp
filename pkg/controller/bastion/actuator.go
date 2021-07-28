@@ -16,10 +16,13 @@ package bastion
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	gcpapi "github.com/gardener/gardener-extension-provider-gcp/pkg/apis/gcp"
 	"github.com/gardener/gardener-extension-provider-gcp/pkg/gcp"
 	"github.com/gardener/gardener/extensions/pkg/controller"
+	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	"github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
 	"github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	v1 "k8s.io/api/core/v1"
@@ -131,4 +134,13 @@ func createGCPClientAndOptions(ctx context.Context, a *actuator, bastion *v1alph
 	}
 
 	return gcpClient, opt, nil
+}
+
+func getWorkersCIDR(shoot *gardencorev1beta1.Shoot) (string, error) {
+	InfrastructureConfig := &gcpapi.InfrastructureConfig{}
+	err := json.Unmarshal(shoot.Spec.Provider.InfrastructureConfig.Raw, InfrastructureConfig)
+	if err != nil {
+		return "", err
+	}
+	return InfrastructureConfig.Networks.Workers, nil
 }

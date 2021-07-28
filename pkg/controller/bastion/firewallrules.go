@@ -64,7 +64,7 @@ func firewallRule(opt *Options, name rule) *compute.Firewall {
 			TargetTags:        []string{opt.BastionInstanceName},
 			Name:              opt.BastionInstanceName + "-egressallowonly",
 			Network:           opt.Network,
-			DestinationRanges: []string{"10.250.0.0/16"},
+			DestinationRanges: []string{opt.WorkersCIDR},
 			Priority:          60,
 		}
 	default:
