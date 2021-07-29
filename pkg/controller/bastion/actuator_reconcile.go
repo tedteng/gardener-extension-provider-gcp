@@ -40,7 +40,7 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 		return err
 	}
 
-	err = ensureFirewallRule(ctx, gcpClient, opt)
+	err = ensureFirewallRules(ctx, gcpClient, opt)
 	if err != nil {
 		return fmt.Errorf("%w, failed to ensure firewall rule", err)
 	}
@@ -68,36 +68,25 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 
 }
 
-func ensureFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) error {
-	firwallRule := firewallRule(opt, ingressAllowSSH)
-	firewall, err := getFirewallRule(ctx, gcpclient, opt, firwallRule.Name)
-	if err != nil {
-		return fmt.Errorf("%w, could not get firewall rule", err)
+func ensureFirewallRules(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) error {
+	firewallList := []*compute.Firewall{ingressAllowSSH(opt), egressDenyAll(opt), egressAllowOnly(opt)}
+
+	for _, item := range firewallList {
+		if err := createFirewallRule(ctx, gcpclient, opt, item); err != nil {
+			return err
+		}
 	}
 
-	// create firewall if it doesn't exist yet
-	if firewall == nil {
-		if err = createFirewallRule(ctx, gcpclient, opt, firewallRule(opt, ingressAllowSSH)); err != nil {
-			return err
-		}
-
-		if err = createFirewallRule(ctx, gcpclient, opt, firewallRule(opt, egressDenyAll)); err != nil {
-			return err
-		}
-
-		if err = createFirewallRule(ctx, gcpclient, opt, firewallRule(opt, egressAllowOnly)); err != nil {
-			return err
-		}
-
-		return nil
+	firewall, err := getFirewallRule(ctx, gcpclient, opt, ingressAllowSSH(opt).Name)
+	if err != nil {
+		return fmt.Errorf("%w, could not get firewall rule", err)
 	}
 
 	currentCIDRs := firewall.SourceRanges
 	wantedCIDRs := opt.CIDRs
 
-	firwallRule = firewallRule(opt, ingressAllowSSH)
 	if !reflect.DeepEqual(currentCIDRs, wantedCIDRs) {
-		return patchFirewallRule(ctx, gcpclient, opt, firwallRule.Name)
+		return patchFirewallRule(ctx, gcpclient, opt, ingressAllowSSH(opt).Name)
 	}
 
 	return nil
@@ -268,10 +257,6 @@ func addressToIngress(dnsName *string, ipAddress *string) *corev1.LoadBalancerIn
 
 	if ipAddress != nil || dnsName != nil {
 		ingress = &corev1.LoadBalancerIngress{}
-		// GCP does not automatically assign a public dns name to the instance (in contrast to e.g. AWS).
-		// As we provide an externalIP to connect to the bastion, having a public dns name would just be an alternative way to connect to the bastion.
-		// Out of this reason, we spare the effort to create a PTR record (see https://cloud.google.com/compute/docs/instances/create-ptr-record#api) just for the sake of having it.
-
 		if dnsName != nil {
 			ingress.Hostname = *dnsName
 		}
