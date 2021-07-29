@@ -17,6 +17,7 @@ package bastion
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/runtime"
 	"reflect"
 	"time"
 
@@ -57,6 +58,18 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 			RequeueAfter: 5 * time.Second,
 			Cause:        fmt.Errorf("bastion instance has no public/private endpoints yet"),
 		}
+	}
+
+	err = controller.TryUpdateStatus(ctx, retry.DefaultBackoff, a.Client(), bastion, func() error {
+		bytes, _ := marshalProvideStatus(opt.Zone)
+		if err != nil {
+			return err
+		}
+		bastion.Status.ProviderStatus = &runtime.RawExtension{Raw: bytes}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to store status.providerStatus for zone: %s", opt.Zone)
 	}
 
 	// once a public endpoint is available, publish the endpoint on the
