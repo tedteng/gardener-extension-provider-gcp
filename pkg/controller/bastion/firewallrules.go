@@ -15,60 +15,50 @@
 package bastion
 
 import (
-	"fmt"
 	"strconv"
 
 	"google.golang.org/api/compute/v1"
 )
 
-type rule int
-
-const (
-	ingressAllowSSH rule = iota + 1
-	egressDenyAll
-	egressAllowOnly
-)
-
-func firewallRule(opt *Options, name rule) *compute.Firewall {
-	//https://cloud.google.com/vpc/docs/using-firewalls
-	switch name {
-	case ingressAllowSSH:
-		return &compute.Firewall{
-			Allowed:      []*compute.FirewallAllowed{{IPProtocol: "tcp", Ports: []string{strconv.Itoa(SSHPort)}}},
-			Description:  "SSH access for Bastion",
-			Direction:    "INGRESS",
-			TargetTags:   []string{opt.BastionInstanceName},
-			Name:         opt.BastionInstanceName + "-allow-ssh",
-			Network:      opt.Network,
-			SourceRanges: opt.CIDRs,
-			Priority:     50,
-		}
-
-	case egressDenyAll:
-		return &compute.Firewall{
-			Denied:            []*compute.FirewallDenied{{IPProtocol: "all"}},
-			Description:       "SSH access for Bastion engress deny",
-			Direction:         "EGRESS",
-			TargetTags:        []string{opt.BastionInstanceName},
-			Name:              opt.BastionInstanceName + "-denyall",
-			Network:           opt.Network,
-			DestinationRanges: []string{"0.0.0.0/0"},
-			Priority:          1000,
-		}
-
-	case egressAllowOnly:
-		return &compute.Firewall{
-			Allowed:           []*compute.FirewallAllowed{{IPProtocol: "all"}},
-			Description:       "SSH access for Bastion engress deny",
-			Direction:         "EGRESS",
-			TargetTags:        []string{opt.BastionInstanceName},
-			Name:              opt.BastionInstanceName + "-egressallowonly",
-			Network:           opt.Network,
-			DestinationRanges: []string{opt.WorkersCIDR},
-			Priority:          60,
-		}
-	default:
-		fmt.Println("Rule not config in firewallrules.go")
+func ingressAllowSSH(opt *Options) *compute.Firewall {
+	return &compute.Firewall{
+		Allowed:      []*compute.FirewallAllowed{{IPProtocol: "tcp", Ports: []string{strconv.Itoa(SSHPort)}}},
+		Description:  "SSH access for Bastion",
+		Direction:    "INGRESS",
+		TargetTags:   []string{opt.BastionInstanceName},
+		Name:         opt.BastionInstanceName + "-allow-ssh",
+		Network:      opt.Network,
+		SourceRanges: opt.CIDRs,
+		Priority:     50,
 	}
-	return nil
+}
+
+func egressDenyAll(opt *Options) *compute.Firewall {
+	return &compute.Firewall{
+		Denied:            []*compute.FirewallDenied{{IPProtocol: "all"}},
+		Description:       "Bastion egress deny",
+		Direction:         "EGRESS",
+		TargetTags:        []string{opt.BastionInstanceName},
+		Name:              opt.BastionInstanceName + "-deny-all",
+		Network:           opt.Network,
+		DestinationRanges: []string{"0.0.0.0/0"},
+		Priority:          1000,
+	}
+}
+
+func egressAllowOnly(opt *Options) *compute.Firewall {
+	return &compute.Firewall{
+		Allowed:           []*compute.FirewallAllowed{{IPProtocol: "tcp", Ports: []string{strconv.Itoa(SSHPort)}}},
+		Description:       "Allow Bastion egress to Shoot workers",
+		Direction:         "EGRESS",
+		TargetTags:        []string{opt.BastionInstanceName},
+		Name:              opt.BastionInstanceName + "-egress-worker",
+		Network:           opt.Network,
+		DestinationRanges: []string{opt.WorkersCIDR},
+		Priority:          60,
+	}
+}
+
+func patchCIDRs(opt *Options) *compute.Firewall {
+	return &compute.Firewall{SourceRanges: opt.CIDRs}
 }
