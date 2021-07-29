@@ -40,6 +40,7 @@ const (
 	SSHPort                 = 22
 	errCodeInstanceNotFound = 404
 	errCodeFirewallNotFound = 404
+	errCodeFirewallExists   = 409
 	errCodeDiskNotFound     = 404
 )
 
@@ -81,6 +82,10 @@ func getFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Op
 
 func createFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, rb *compute.Firewall) error {
 	if _, err := gcpclient.Firewalls().Insert(opt.ProjectID, rb).Context(ctx).Do(); err != nil {
+		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == errCodeFirewallExists {
+			logger.Info("Firewall rule already exits,", "firewall_rule_name", rb.Name)
+			return nil
+		}
 		return fmt.Errorf("%w, could not create firewall rule %s", err, rb.Name)
 	}
 
@@ -88,8 +93,12 @@ func createFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt 
 	return nil
 }
 
-func deletedFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, firewallRuleName string) error {
+func deleteFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, firewallRuleName string) error {
 	if _, err := gcpclient.Firewalls().Delete(opt.ProjectID, firewallRuleName).Context(ctx).Do(); err != nil {
+		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == errCodeFirewallNotFound {
+			logger.Info("Firewall rule not found,", "firewall_rule_name", firewallRuleName)
+			return nil
+		}
 		return fmt.Errorf("%w, failed to delete firewall rule %s", err, firewallRuleName)
 	}
 
@@ -98,8 +107,7 @@ func deletedFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt
 }
 
 func patchFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, firewallRuleName string) error {
-	rb := &compute.Firewall{SourceRanges: opt.CIDRs}
-	if _, err := gcpclient.Firewalls().Patch(opt.ProjectID, firewallRuleName, rb).Context(ctx).Do(); err != nil {
+	if _, err := gcpclient.Firewalls().Patch(opt.ProjectID, firewallRuleName, patchCIDRs(opt)).Context(ctx).Do(); err != nil {
 		return err
 	}
 	return nil
