@@ -138,7 +138,7 @@ func createGCPClientAndOptions(ctx context.Context, a *actuator, bastion *v1alph
 
 	opt, err := DetermineOptions(bastion, cluster, serviceAccount.ProjectID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w, failed to setup GCP options", err)
+		return nil, nil, fmt.Errorf("%w, failed to determine Options", err)
 	}
 
 	return gcpClient, opt, nil

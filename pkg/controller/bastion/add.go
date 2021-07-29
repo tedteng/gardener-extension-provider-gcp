@@ -30,7 +30,7 @@ var (
 	logger = log.Log.WithName("gcp-bastion-actuator")
 )
 
-// AddOptions are options to apply when adding the GCP bastion controller to the manager.
+// AddOptions are Options to apply when adding the GCP bastion controller to the manager.
 type AddOptions struct {
 	// Controller are the controller.Options.
 	Controller controller.Options
