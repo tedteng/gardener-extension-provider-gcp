@@ -17,9 +17,10 @@ package bastion
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime"
 	"reflect"
 	"time"
+
+	"k8s.io/apimachinery/pkg/runtime"
 
 	gcpclient "github.com/gardener/gardener-extension-provider-gcp/pkg/internal/client"
 	"github.com/gardener/gardener/extensions/pkg/controller"
@@ -39,6 +40,13 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 	gcpClient, opt, err := createGCPClientAndOptions(ctx, a, bastion, cluster)
 	if err != nil {
 		return err
+	}
+
+	if opt.Zone == "" {
+		opt.Zone, err = getDefaultGCPZone(ctx, gcpClient, opt, cluster.Shoot.Spec.Region)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = ensureFirewallRules(ctx, gcpClient, opt)

@@ -31,6 +31,8 @@ type Interface interface {
 	Instances() InstancesService
 	// Disks retrieves the GCP Disks Service
 	Disks() DisksService
+	// Regions retrieves the GCP Regions Service
+	Regions() RegionsService
 }
 
 // FirewallsService is the interface for the GCP firewalls service.
@@ -73,6 +75,12 @@ type DisksService interface {
 	Delete(project string, zone string, disk string) DisksDeleteCall
 	// Insert initiates a DisksServiceCall
 	Insert(projectID string, zone string, disk *compute.Disk) DisksInsertCall
+}
+
+// RegionsService is the interface for the GCP Regions service.
+type RegionsService interface {
+	// Get initiates a RegionsServiceCall
+	Get(projectID string, region string) RegionsGetCall
 }
 
 // FirewallsListCall is a list call to the firewalls service.
@@ -172,4 +180,11 @@ type DisksDeleteCall interface {
 	Do(opts ...googleapi.CallOption) (*compute.Operation, error)
 	// Context sets the context for the delete call.
 	Context(context.Context) DisksDeleteCall
+}
+
+type RegionsGetCall interface {
+	// Do executes the get call.
+	Do(opts ...googleapi.CallOption) (*compute.Region, error)
+	// Context sets the context for the get call.
+	Context(context.Context) RegionsGetCall
 }
