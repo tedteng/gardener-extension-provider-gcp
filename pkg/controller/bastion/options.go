@@ -99,10 +99,12 @@ func getZone(cluster *extensions.Cluster, region string, providerStatus *provide
 
 	for _, j := range cluster.CloudProfile.Spec.Regions {
 		if j.Name == region {
-			return j.Zones[0].Name
+			if len(j.Zones) > 0 {
+				return j.Zones[0].Name
+			}
 		}
 	}
-	return "" //todo what will happen if we will not get any zone?
+	return ""
 }
 
 func ingressPermissions(bastion *extensionsv1alpha1.Bastion) ([]string, error) {

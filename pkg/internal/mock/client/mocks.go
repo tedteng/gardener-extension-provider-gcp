@@ -79,6 +79,20 @@ func (mr *MockInterfaceMockRecorder) Instances() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Instances", reflect.TypeOf((*MockInterface)(nil).Instances))
 }
 
+// Regions mocks base method.
+func (m *MockInterface) Regions() client.RegionsService {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Regions")
+	ret0, _ := ret[0].(client.RegionsService)
+	return ret0
+}
+
+// Regions indicates an expected call of Regions.
+func (mr *MockInterfaceMockRecorder) Regions() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Regions", reflect.TypeOf((*MockInterface)(nil).Regions))
+}
+
 // Routes mocks base method.
 func (m *MockInterface) Routes() client.RoutesService {
 	m.ctrl.T.Helper()
