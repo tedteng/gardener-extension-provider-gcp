@@ -36,6 +36,13 @@ func (a *actuator) Delete(ctx context.Context, bastion *extensionsv1alpha1.Basti
 		return err
 	}
 
+	if opt.Zone == "" {
+		opt.Zone, err = getDefaultGCPZone(ctx, gcpClient, opt, cluster.Shoot.Spec.Region)
+		if err != nil {
+			return err
+		}
+	}
+
 	if err := removeFirewallRules(ctx, logger, bastion, gcpClient, opt); err != nil {
 		return fmt.Errorf("%w, failed to remove firewall rule", err)
 	}

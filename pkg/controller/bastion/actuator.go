@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	gcpapi "github.com/gardener/gardener-extension-provider-gcp/pkg/apis/gcp"
 	"github.com/gardener/gardener-extension-provider-gcp/pkg/gcp"
@@ -151,4 +152,16 @@ func getWorkersCIDR(shoot *gardencorev1beta1.Shoot) (string, error) {
 		return "", err
 	}
 	return InfrastructureConfig.Networks.Workers, nil
+}
+
+func getDefaultGCPZone(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, region string) (string, error) {
+	resp, err := gcpclient.Regions().Get(opt.ProjectID, region).Context(ctx).Do()
+	if err != nil {
+		return "", err
+	}
+	if len(resp.Zones) > 0 {
+		zone := strings.Split(resp.Zones[0], "/")
+		return zone[(len(zone) - 1)], nil
+	}
+	return "", fmt.Errorf("no available zones in GCP region:%s", region)
 }

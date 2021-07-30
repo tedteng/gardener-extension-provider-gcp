@@ -61,7 +61,12 @@ type disksGetCall struct {
 type disksDeleteCall struct {
 	disksDeleteCall *compute.DisksDeleteCall
 }
-
+type regionsService struct {
+	regionsService *compute.RegionsService
+}
+type regionsGetCall struct {
+	regionsGetCall *compute.RegionsGetCall
+}
 type firewallsListCall struct {
 	firewallsListCall *compute.FirewallsListCall
 }
@@ -129,6 +134,11 @@ func (c *client) Instances() InstancesService {
 // Disks implements Interface.
 func (c *client) Disks() DisksService {
 	return &disksService{c.service.Disks}
+}
+
+// Regions implements Interface.
+func (c *client) Regions() RegionsService {
+	return &regionsService{c.service.Regions}
 }
 
 // Get implements InstancesService.
@@ -314,4 +324,19 @@ func (c *disksDeleteCall) Do(opts ...googleapi.CallOption) (*compute.Operation, 
 // Context implements DisksDeleteCall.
 func (c *disksDeleteCall) Context(ctx context.Context) DisksDeleteCall {
 	return &disksDeleteCall{c.disksDeleteCall.Context(ctx)}
+}
+
+// Get implements RegionsService.
+func (r *regionsService) Get(projectID string, region string) RegionsGetCall {
+	return &regionsGetCall{r.regionsService.Get(projectID, region)}
+}
+
+// Do implements RegionsGetCall.
+func (r *regionsGetCall) Do(opts ...googleapi.CallOption) (*compute.Region, error) {
+	return r.regionsGetCall.Do(opts...)
+}
+
+// Context implements RegionsGetCall.
+func (r *regionsGetCall) Context(ctx context.Context) RegionsGetCall {
+	return &regionsGetCall{r.regionsGetCall.Context(ctx)}
 }
