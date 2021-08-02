@@ -1,6 +1,8 @@
 package bastion
 
 import (
+	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
+	runtime2 "k8s.io/apimachinery/pkg/runtime"
 	"reflect"
 	"runtime"
 	"testing"
@@ -15,6 +17,24 @@ func TestBastion(t *testing.T) {
 }
 
 var _ = Describe("Bastion", func() {
+
+	Describe("getWorkersCIDR", func() {
+		It("getWorkersCIDR", func() {
+
+			json := `{"apiVersion": "gcp.provider.extensions.gardener.cloud/v1alpha1","kind": "InfrastructureConfig", "networks": {"workers": "10.250.0.0/16"}}`
+			shoot := &gardencorev1beta1.Shoot{
+				Spec: gardencorev1beta1.ShootSpec{
+					Provider: gardencorev1beta1.Provider{
+						InfrastructureConfig: &runtime2.RawExtension{
+							Raw: []byte(json),
+						}}},
+			}
+			cidr, err := getWorkersCIDR(shoot)
+			Expect(err).To(Not(HaveOccurred()))
+			Expect(cidr).To(Equal("10.250.0.0/16"))
+		})
+	})
+
 	Describe("check Names generations", func() {
 		It("should generate idempotent name", func() {
 			expected := "clusterName-shortName-bastion-79641"
