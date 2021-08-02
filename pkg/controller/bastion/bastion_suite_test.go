@@ -1,7 +1,12 @@
 package bastion
 
 import (
+	"fmt"
+	"github.com/gardener/gardener/extensions/pkg/controller"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
+	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime2 "k8s.io/apimachinery/pkg/runtime"
 	"reflect"
 	"runtime"
@@ -20,18 +25,58 @@ var _ = Describe("Bastion", func() {
 
 	Describe("getWorkersCIDR", func() {
 		It("getWorkersCIDR", func() {
-
-			json := `{"apiVersion": "gcp.provider.extensions.gardener.cloud/v1alpha1","kind": "InfrastructureConfig", "networks": {"workers": "10.250.0.0/16"}}`
-			shoot := &gardencorev1beta1.Shoot{
-				Spec: gardencorev1beta1.ShootSpec{
-					Provider: gardencorev1beta1.Provider{
-						InfrastructureConfig: &runtime2.RawExtension{
-							Raw: []byte(json),
-						}}},
-			}
-			cidr, err := getWorkersCIDR(shoot)
+			cidr, err := getWorkersCIDR(createShootTestStruct())
 			Expect(err).To(Not(HaveOccurred()))
 			Expect(cidr).To(Equal("10.250.0.0/16"))
+		})
+	})
+
+	Describe("Determine options", func() {
+		It("should return options", func() {
+
+			cluster := &controller.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "cluster1"},
+				Shoot:      createShootTestStruct(),
+				CloudProfile: &gardencorev1beta1.CloudProfile{
+					Spec: gardencorev1beta1.CloudProfileSpec{
+						Regions: []gardencorev1beta1.Region{
+							{Name: "regionName"},
+							{Name: "us-west", Zones: []gardencorev1beta1.AvailabilityZone{
+								{Name: "us-west-a"},
+								{Name: "us-west-b"},
+							}},
+						},
+					},
+				},
+			}
+
+			bastion := &extensionsv1alpha1.Bastion{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "bastionName1",
+				},
+				Spec: extensionsv1alpha1.BastionSpec{
+					DefaultSpec: extensionsv1alpha1.DefaultSpec{},
+					UserData:    nil,
+					Ingress: []extensionsv1alpha1.BastionIngressPolicy{
+						{IPBlock: networkingv1.IPBlock{
+							CIDR: "213.69.151.0/24",
+						}},
+					},
+				},
+			}
+			options, err := DetermineOptions(bastion, cluster, "projectID")
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			Expect(options.BastionInstanceName).To(Equal("cluster1-bastionName1-bastion-1cdc8"))
+			Expect(options.Zone).To(Equal("us-west-a"))
+			Expect(options.DiskName).To(Equal("cluster1-bastionName1-bastion-1cdc8-disk"))
+			Expect(options.CIDRs).To(Equal([]string{"213.69.151.0/24"}))
+			Expect(options.Subnetwork).To(Equal("regions/us-west/subnetworks/cluster1-nodes"))
+			Expect(options.ProjectID).To(Equal("projectID"))
+			Expect(options.Network).To(Equal("projects/projectID/global/networks/cluster1"))
+			Expect(options.WorkersCIDR).To(Equal("10.250.0.0/16"))
 		})
 	})
 
@@ -77,3 +122,16 @@ var _ = Describe("Bastion", func() {
 		})
 	})
 })
+
+func createShootTestStruct() *gardencorev1beta1.Shoot {
+	json := `{"apiVersion": "gcp.provider.extensions.gardener.cloud/v1alpha1","kind": "InfrastructureConfig", "networks": {"workers": "10.250.0.0/16"}}`
+	shoot := &gardencorev1beta1.Shoot{
+		Spec: gardencorev1beta1.ShootSpec{
+			Region: "us-west",
+			Provider: gardencorev1beta1.Provider{
+				InfrastructureConfig: &runtime2.RawExtension{
+					Raw: []byte(json),
+				}}},
+	}
+	return shoot
+}
