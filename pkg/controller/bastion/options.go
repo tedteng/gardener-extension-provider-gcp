@@ -17,6 +17,7 @@ package bastion
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 
@@ -132,6 +133,13 @@ func ingressPermissions(bastion *extensionsv1alpha1.Bastion) ([]string, error) {
 }
 
 func generateBastionBaseResourceName(clusterName string, bastionName string) (string, error) {
+	if clusterName == "" {
+		return "", errors.New("clusterName can't be empty")
+	}
+	if bastionName == "" {
+		return "", errors.New("bastionName can't be empty")
+	}
+
 	staticName := clusterName + "-" + bastionName
 	h := sha256.New()
 	_, err := h.Write([]byte(staticName))
