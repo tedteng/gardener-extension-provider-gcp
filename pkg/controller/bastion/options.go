@@ -160,7 +160,7 @@ func getProviderStatus(bastion *extensionsv1alpha1.Bastion) (*providerStatusRaw,
 	return nil, nil
 }
 
-func marshalProvideStatus(zone string) ([]byte, error) {
+func marshalProviderStatus(zone string) ([]byte, error) {
 	return json.Marshal(&providerStatusRaw{
 		Zone: zone,
 	})

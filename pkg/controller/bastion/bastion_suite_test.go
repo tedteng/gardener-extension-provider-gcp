@@ -2,15 +2,16 @@ package bastion
 
 import (
 	"fmt"
+	"reflect"
+	"runtime"
+	"testing"
+
 	"github.com/gardener/gardener/extensions/pkg/controller"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime2 "k8s.io/apimachinery/pkg/runtime"
-	"reflect"
-	"runtime"
-	"testing"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -120,6 +121,28 @@ var _ = Describe("Bastion", func() {
 				Expect(len(result)).Should(BeNumerically("<", maxLengthForResource), "failed function: %v", runtime.FuncForPC(reflect.ValueOf(fun).Pointer()).Name())
 			}
 		})
+	})
+
+	Describe("check marshalProviderStatus", func() {
+		It("should return a JSON object containing a Zone Struct", func() {
+			res, err := marshalProviderStatus("us-west1-a")
+			expectedMarshalOutput := "{\"zone\":\"us-west1-a\"}"
+
+			Expect(err).To(Not(HaveOccurred()))
+			Expect(string(res)).To(Equal(expectedMarshalOutput))
+		})
+
+	})
+	Describe("check unMarshalProviderStatus", func() {
+		It("should update a ProviderStatusRaw Object from a Byte array", func() {
+			testInput := []byte("{\"zone\":\"us-west1-a\"}")
+			res, err := unmarshalProviderStatus(testInput)
+			expectedMarshalOutput := "us-west1-a"
+
+			Expect(err).To(Not(HaveOccurred()))
+			Expect(res.Zone).To(Equal(expectedMarshalOutput))
+		})
+
 	})
 })
 
