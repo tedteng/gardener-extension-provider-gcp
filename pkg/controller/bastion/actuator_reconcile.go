@@ -69,7 +69,7 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 	}
 
 	err = controller.TryUpdateStatus(ctx, retry.DefaultBackoff, a.Client(), bastion, func() error {
-		bytes, _ := marshalProvideStatus(opt.Zone)
+		bytes, _ := marshalProviderStatus(opt.Zone)
 		if err != nil {
 			return err
 		}
