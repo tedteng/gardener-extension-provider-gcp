@@ -7,12 +7,12 @@ import (
 	"runtime"
 	"testing"
 
-	gcpclient "github.com/gardener/gardener-extension-provider-gcp/pkg/internal/client"
+	mockgcpclient "github.com/gardener/gardener-extension-provider-gcp/pkg/internal/mock/client"
 	"github.com/gardener/gardener/extensions/pkg/controller"
-	"github.com/gardener/gardener/extensions/pkg/controller/common"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	"github.com/gardener/gardener/pkg/extensions"
+	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -27,15 +27,20 @@ func TestBastion(t *testing.T) {
 
 var _ = Describe("Bastion", func() {
 	var (
-		cluster   *extensions.Cluster
-		bastion   *extensionsv1alpha1.Bastion
-		ctx       context.Context
-		gcpclient gcpclient.Interface
-		opt       Options
+		cluster *extensions.Cluster
+		bastion *extensionsv1alpha1.Bastion
+		//ctx       context.Context
+		//gcpclient gcpclient.Interface
+		opt  Options
+		ctrl *gomock.Controller
 	)
 	BeforeEach(func() {
 		cluster = createGCPTestCluster()
 		bastion = createTestBastion()
+		ctrl = gomock.NewController(GinkgoT())
+	})
+	AfterEach(func() {
+		ctrl.Finish()
 	})
 
 	Describe("getWorkersCIDR", func() {
@@ -183,42 +188,26 @@ var _ = Describe("Bastion", func() {
 		})
 	})
 
-	Describe("check return values", func() {
-		It("Should return base plus disk", func() {
-			res := diskResourceName("base")
-			Expect(res).To(Equal("base-disk"))
-		})
-		It("Should return base plus nodes", func() {
-			res := nodesResourceName("base")
-			Expect(res).To(Equal("base-nodes"))
-		})
-		It("Should return base plus allow-ssh", func() {
-			res := firewallIngressAllowSSHResourceName("base")
-			Expect(res).To(Equal("base-allow-ssh"))
-		})
-		It("Should return base plus egress-worker", func() {
-			res := firewallEgressAllowOnlyResourceName("base")
-			Expect(res).To(Equal("base-egress-worker"))
-		})
-		It("Should return base plus deny-all", func() {
-			res := firewallEgressDenyAllResourceName("base")
-			Expect(res).To(Equal("base-deny-all"))
-		})
-	})
-
-	Describe("check getBastionInstance", func() {
-		It("Should return Bastion Instance", func() {
+	Describe("check DeleteFirewalls works", func() {
+		It("should delete all firewalls", func() {
+			var (
+				ctx                 = context.TODO()
+				firewallName        = fmt.Sprintf("%sfw", "test-")
+				client              = mockgcpclient.NewMockInterface(ctrl)
+				firewalls           = mockgcpclient.NewMockFirewallsService(ctrl)
+				firewallsDeleteCall = mockgcpclient.NewMockFirewallsDeleteCall(ctrl)
+			)
 			opt = createTestOptions(opt)
-			ctx = context.Background()
-			a := &actuator{common.ClientContext, logger}
-			gcpclient, _, _ = createGCPClientAndOptions(ctx, a, bastion, cluster)
-			res, err := getBastionInstance(ctx, gcpclient, &opt)
 
-			Expect(err).To(Not(HaveOccurred()))
-			Expect(res.Name).To(Equal("test-bastion1"))
+			gomock.InOrder(
+				client.EXPECT().Firewalls().Return(firewalls),
+				firewalls.EXPECT().Delete(opt.ProjectID, firewallName).Return(firewallsDeleteCall),
+				firewallsDeleteCall.EXPECT().Context(ctx).Return(firewallsDeleteCall),
+				firewallsDeleteCall.EXPECT().Do(),
+			)
+			Expect(deleteFirewallRule(ctx, client, &opt, firewallName)).To(Succeed())
 
 		})
-
 	})
 })
 
@@ -273,7 +262,7 @@ func createTestBastion() *extensionsv1alpha1.Bastion {
 }
 
 func createTestOptions(opt Options) Options {
-	opt.ProjectID = "sap-se-gcp-scp-k8s-dev"
+	opt.ProjectID = "test-project"
 	opt.Zone = "us-west1-a"
 	opt.BastionInstanceName = "test-bastion1"
 	return opt
