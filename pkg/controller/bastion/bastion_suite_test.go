@@ -1,21 +1,23 @@
 package bastion
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"runtime"
 	"testing"
 
+	gcpclient "github.com/gardener/gardener-extension-provider-gcp/pkg/internal/client"
 	"github.com/gardener/gardener/extensions/pkg/controller"
+	"github.com/gardener/gardener/extensions/pkg/controller/common"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	"github.com/gardener/gardener/pkg/extensions"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime2 "k8s.io/apimachinery/pkg/runtime"
-
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
 )
 
 func TestBastion(t *testing.T) {
@@ -25,8 +27,11 @@ func TestBastion(t *testing.T) {
 
 var _ = Describe("Bastion", func() {
 	var (
-		cluster *extensions.Cluster
-		bastion *extensionsv1alpha1.Bastion
+		cluster   *extensions.Cluster
+		bastion   *extensionsv1alpha1.Bastion
+		ctx       context.Context
+		gcpclient gcpclient.Interface
+		opt       Options
 	)
 	BeforeEach(func() {
 		cluster = createGCPTestCluster()
@@ -201,6 +206,20 @@ var _ = Describe("Bastion", func() {
 		})
 	})
 
+	Describe("check getBastionInstance", func() {
+		It("Should return Bastion Instance", func() {
+			opt = createTestOptions(opt)
+			ctx = context.Background()
+			a := &actuator{common.ClientContext, logger}
+			gcpclient, _, _ = createGCPClientAndOptions(ctx, a, bastion, cluster)
+			res, err := getBastionInstance(ctx, gcpclient, &opt)
+
+			Expect(err).To(Not(HaveOccurred()))
+			Expect(res.Name).To(Equal("test-bastion1"))
+
+		})
+
+	})
 })
 
 func createShootTestStruct() *gardencorev1beta1.Shoot {
@@ -251,4 +270,11 @@ func createTestBastion() *extensionsv1alpha1.Bastion {
 		},
 	}
 	return bastion
+}
+
+func createTestOptions(opt Options) Options {
+	opt.ProjectID = "sap-se-gcp-scp-k8s-dev"
+	opt.Zone = "us-west1-a"
+	opt.BastionInstanceName = "test-bastion1"
+	return opt
 }
