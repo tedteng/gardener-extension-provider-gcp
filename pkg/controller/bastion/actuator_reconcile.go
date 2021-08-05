@@ -90,15 +90,15 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 }
 
 func ensureFirewallRules(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) error {
-	firewallList := []*compute.Firewall{ingressAllowSSH(opt), egressDenyAll(opt), egressAllowOnly(opt)}
+	firewallList := []*compute.Firewall{IngressAllowSSH(opt), EgressDenyAll(opt), EgressAllowOnly(opt)}
 
 	for _, item := range firewallList {
-		if err := createFirewallRule(ctx, gcpclient, opt, item); err != nil {
+		if err := CreateFirewallRule(ctx, gcpclient, opt, item); err != nil {
 			return err
 		}
 	}
 
-	firewall, err := getFirewallRule(ctx, gcpclient, opt, ingressAllowSSH(opt).Name)
+	firewall, err := getFirewallRule(ctx, gcpclient, opt, IngressAllowSSH(opt).Name)
 	if err != nil {
 		return fmt.Errorf("%w, could not get firewall rule", err)
 	}
@@ -107,7 +107,7 @@ func ensureFirewallRules(ctx context.Context, gcpclient gcpclient.Interface, opt
 	wantedCIDRs := opt.CIDRs
 
 	if !reflect.DeepEqual(currentCIDRs, wantedCIDRs) {
-		return patchFirewallRule(ctx, gcpclient, opt, ingressAllowSSH(opt).Name)
+		return patchFirewallRule(ctx, gcpclient, opt, IngressAllowSSH(opt).Name)
 	}
 
 	return nil
