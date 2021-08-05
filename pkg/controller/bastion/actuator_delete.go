@@ -71,7 +71,7 @@ func (a *actuator) Delete(ctx context.Context, bastion *extensionsv1alpha1.Basti
 }
 
 func removeFirewallRules(ctx context.Context, logger logr.Logger, bastion *extensionsv1alpha1.Bastion, gcpclient gcpclient.Interface, opt *Options) error {
-	firewallList := []string{ingressAllowSSH(opt).Name, egressDenyAll(opt).Name, egressAllowOnly(opt).Name}
+	firewallList := []string{IngressAllowSSH(opt).Name, EgressDenyAll(opt).Name, EgressAllowOnly(opt).Name}
 	for _, firewall := range firewallList {
 		if err := deleteFirewallRule(ctx, gcpclient, opt, firewall); err != nil {
 			return err
