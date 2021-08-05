@@ -138,7 +138,7 @@ var _ = Describe("Bastion", func() {
 
 	Describe("check unMarshalProviderStatus", func() {
 		It("should update a ProviderStatusRaw Object from a Byte array", func() {
-			testInput := []byte("{\"zone\":\"us-west1-a\"}")
+			testInput := []byte(`{"zone":"us-west1-a"}`)
 			res, err := unmarshalProviderStatus(testInput)
 			expectedMarshalOutput := "us-west1-a"
 
@@ -149,17 +149,15 @@ var _ = Describe("Bastion", func() {
 
 	Describe("check Ingress Permissions", func() {
 		It("Should return a string array with ipV4 normalized addresses", func() {
+			bastion.Spec.Ingress = []extensionsv1alpha1.BastionIngressPolicy{
+				{IPBlock: networkingv1.IPBlock{
+					CIDR: "213.69.151.253/24",
+				}},
+			}
 			res, err := ingressPermissions(bastion)
 			Expect(err).To(Not(HaveOccurred()))
 			Expect(res[0]).To(Equal("213.69.151.0/24"))
 
-		})
-	})
-	Describe("check Ingress Permissions", func() {
-		It("Should return a string array with ipV4 normalized addresses", func() {
-			res, err := ingressPermissions(bastion)
-			Expect(err).To(Not(HaveOccurred()))
-			Expect(res[0]).To(Equal("213.69.151.0/24"))
 		})
 		It("Should throw an error with invalid CIDR entry", func() {
 			bastion.Spec.Ingress = []extensionsv1alpha1.BastionIngressPolicy{
@@ -181,7 +179,7 @@ var _ = Describe("Bastion", func() {
 			Expect(res).To(BeNil())
 		})
 		It("Should return a providerStatusRaw struct", func() {
-			bastion.Status.ProviderStatus = &runtime2.RawExtension{Raw: []byte("{\"zone\":\"us-west1-a\"}")}
+			bastion.Status.ProviderStatus = &runtime2.RawExtension{Raw: []byte(`{"zone":"us-west1-a"}`)}
 			res, err := getProviderStatus(bastion)
 			Expect(err).To(Not(HaveOccurred()))
 			Expect(res.Zone).To(Equal("us-west1-a"))
