@@ -18,6 +18,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"path/filepath"
 	"strings"
 	"time"
@@ -90,10 +92,10 @@ var _ = Describe("Bastion tests", func() {
 
 	)
 
-	randString, err := randomString()
+	_, err := randomString()
 	Expect(err).NotTo(HaveOccurred())
 
-	name := fmt.Sprintf("gcp-bastion-it--%s", randString)
+	name := fmt.Sprintf("gcp-bastion-it--%s", "42random")
 
 	BeforeSuite(func() {
 		repoRoot := filepath.Join("..", "..", "..")
@@ -172,6 +174,31 @@ var _ = Describe("Bastion tests", func() {
 
 		By("stopping test environment")
 		Expect(testEnv.Stop()).To(Succeed())
+	})
+
+	It("SHOULD CREATE BASTION", func() {
+		time.Sleep(10 * time.Second)
+		bastion := createTestBastion(name)
+		err = c.Create(ctx, bastion)
+		Expect(err).NotTo(HaveOccurred())
+
+		logger.Info("sleep for 1 minute")
+		time.Sleep(1 * time.Minute)
+
+		bastionUpdated := &extensionsv1alpha1.Bastion{}
+		Expect(c.Get(ctx, client.ObjectKey{Namespace: bastion.Namespace, Name: bastion.Name}, bastionUpdated)).To(Succeed())
+		ipAddress := bastionUpdated.Status.Ingress.IP
+		logger.Infof("\n!!!!!!!!!!!!!            BASTION IP ADDRESS: %v\n", ipAddress)
+
+		//command := []string{"-vznw", "60", ipAddress, fmt.Sprint(22)}
+		//cmd := exec.Command("/usr/bin/nc", command...)
+		//err := cmd.Run()
+		//Expect(err).NotTo(HaveOccurred())
+
+		time.Sleep(2 * time.Minute)
+		err = c.Delete(ctx, bastion)
+		Expect(err).NotTo(HaveOccurred())
+		logger.Info("Bastion deleted.")
 	})
 
 	It("should successfully create and delete", func() {
@@ -297,23 +324,27 @@ func getResourceNameFromSelfLink(link string) string {
 	return parts[len(parts)-1]
 }
 
-// func createTestBastion(name string) *extensionsv1alpha1.Bastion {
-// 	bastion := &extensionsv1alpha1.Bastion{
-// 		ObjectMeta: metav1.ObjectMeta{
-// 			Name: name + "-bastion",
-// 		},
-// 		Spec: extensionsv1alpha1.BastionSpec{
-// 			DefaultSpec: extensionsv1alpha1.DefaultSpec{},
-// 			UserData:    nil,
-// 			Ingress: []extensionsv1alpha1.BastionIngressPolicy{
-// 				{IPBlock: networkingv1.IPBlock{
-// 					CIDR: workersSubnetCIDR,
-// 				}},
-// 			},
-// 		},
-// 	}
-// 	return bastion
-// }
+func createTestBastion(name string) *extensionsv1alpha1.Bastion {
+	bastion := &extensionsv1alpha1.Bastion{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name + "-bastion",
+			Namespace: "shoot--core--d071785-test1",
+		},
+		Spec: extensionsv1alpha1.BastionSpec{
+			DefaultSpec: extensionsv1alpha1.DefaultSpec{
+				Type: "gcp",
+			},
+			UserData: []byte("IyEvYmluL2Jhc2ggLWV1CmlkIGdhcmRlbmVyIHx8IHVzZXJhZGQgZ2FyZGVuZXIgLW1VCm1rZGlyIC1wIC9ob21lL2dhcmRlbmVyLy5zc2gKZWNobyAic3NoLXJzYSBBQUFBQjNOemFDMXljMkVBQUFBREFRQUJBQUFCQVFDazYyeDZrN2orc0lkWG9TN25ITzRrRmM3R0wzU0E2UmtMNEt4VmE5MUQ5RmxhcmtoRzFpeU85WGNNQzZqYnh4SzN3aWt0M3kwVTBkR2h0cFl6Vjh3YmV3Z3RLMWJBWnl1QXJMaUhqbnJnTFVTRDBQazNvWGh6RkpKN0MvRkxNY0tJZFN5bG4vMENKVkVscENIZlU5Y3dqQlVUeHdVQ2pnVXRSYjdZWHN6N1Y5dllIVkdJKzRLaURCd3JzOWtVaTc3QWMyRHQ1UzBJcit5dGN4b0p0bU5tMWgxTjNnNzdlbU8rWXhtWEo4MzFXOThoVFVTeFljTjNXRkhZejR5MWhrRDB2WHE1R1ZXUUtUQ3NzRE1wcnJtN0FjQTBCcVRsQ0xWdWl3dXVmTEJLWGhuRHZRUEQrQ2Jhbk03bUZXRXdLV0xXelZHME45Z1VVMXE1T3hhMzhvODUgbWVAbWFjIiA+IC9ob21lL2dhcmRlbmVyLy5zc2gvYXV0aG9yaXplZF9rZXlzCmNob3duIGdhcmRlbmVyOmdhcmRlbmVyIC9ob21lL2dhcmRlbmVyLy5zc2gvYXV0aG9yaXplZF9rZXlzCmVjaG8gImdhcmRlbmVyIEFMTD0oQUxMKSBOT1BBU1NXRDpBTEwiID4vZXRjL3N1ZG9lcnMuZC85OS1nYXJkZW5lci11c2VyCg=="),
+			Ingress: []extensionsv1alpha1.BastionIngressPolicy{
+				{IPBlock: networkingv1.IPBlock{
+					CIDR: "165.1.187.0/24",
+				}},
+			},
+		},
+	}
+
+	return bastion
+}
 
 // func createInfrastructure() *gcpv1alpha1.InfrastructureConfig {
 // 	infrastructureConfig := &gcpv1alpha1.InfrastructureConfig{
