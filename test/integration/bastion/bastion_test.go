@@ -31,7 +31,6 @@ import (
 	gcpv1alpha1 "github.com/gardener/gardener-extension-provider-gcp/pkg/apis/gcp/v1alpha1"
 	bastionctrl "github.com/gardener/gardener-extension-provider-gcp/pkg/controller/bastion"
 	"github.com/gardener/gardener-extension-provider-gcp/pkg/gcp"
-
 	"github.com/gardener/gardener/extensions/pkg/controller"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
@@ -227,7 +226,7 @@ var _ = Describe("Bastion tests", func() {
 			teardownBastion(ctx, logger, c, bastion)
 
 			By("verify bastion deletion")
-			verifyDeletion(ctx, project, computeService, options) //todo
+			verifyDeletion(ctx, project, computeService, options)
 		})
 
 		By("wait until bastion is reconciled")
@@ -406,27 +405,34 @@ func teardownBastion(ctx context.Context, logger *logrus.Entry, c client.Client,
 	Expect(err).NotTo(HaveOccurred())
 }
 
-func verifyCreation( //todo
+func verifyCreation(
 	ctx context.Context,
 	project string,
 	computeService *compute.Service,
 	options *bastionctrl.Options,
 ) {
 
-	// bastion firewall
-	firewall, err := computeService.Firewalls.Get(project, "xxxxx---sshallow").Context(ctx).Do()
-
-	Expect(err).NotTo(HaveOccurred())
-	Expect(firewall.Name).To(HaveLen(1))
-
-	// ingress permissions
-
-	// egress permissions
-
-	// worker security group
+	// bastion firewall - Check Ingress / Egress firewalls created
+	checkFirewallExists(ctx, project, computeService, options.BastionInstanceName+"-allow-ssh")
+	checkFirewallExists(ctx, project, computeService, options.BastionInstanceName+"-egress-worker")
+	checkFirewallExists(ctx, project, computeService, options.BastionInstanceName+"-deny-all")
 
 	// bastion instance
+	createdInstance, err := computeService.Instances.Get(project, options.Zone, options.BastionInstanceName).Context(ctx).Do()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(createdInstance.Name).To(Equal(options.BastionInstanceName))
 
+	//bastion ingress IPs exist
+	networkInterfaces := createdInstance.NetworkInterfaces
+	internalIP := &networkInterfaces[0].NetworkIP
+	externalIP := &networkInterfaces[0].AccessConfigs[0].NatIP
+	Expect(internalIP).NotTo(BeNil())
+	Expect(externalIP).NotTo(BeNil())
+
+	//bastion Disk exists
+	createdDisk, err := computeService.Disks.Get(project, options.Zone, options.BastionInstanceName+"disk").Context(ctx).Do()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(createdDisk).To(Equal(options.BastionInstanceName + "-disk"))
 }
 
 func verifyDeletion(
@@ -437,10 +443,27 @@ func verifyDeletion(
 ) {
 
 	// bastion firewalls should be gone
-	_, err := computeService.Firewalls.Get(project, "xxxxx---ssh").Context(ctx).Do()
-	Expect(err).To(BeNotFoundError())
+	// Check Firewall for Ingress / Egress
+	checkFirewallDoesNotExist(ctx, project, computeService, options.BastionInstanceName+"-allow-ssh")
+	checkFirewallDoesNotExist(ctx, project, computeService, options.BastionInstanceName+"-egress-worker")
+	checkFirewallDoesNotExist(ctx, project, computeService, options.BastionInstanceName+"-deny-all")
 
-	// instance should be terminated
+	// instance should be terminated and not found
+	_, err := computeService.Instances.Get(project, options.Zone, options.BastionInstanceName).Context(ctx).Do()
+	Expect(err).To(HaveOccurred())
 
-	// instance should be terminated
+	// Disk should be terminated and not found
+	_, err = computeService.Disks.Get(project, options.Zone, options.BastionInstanceName+"disk").Context(ctx).Do()
+	Expect(err).To(HaveOccurred())
+}
+
+func checkFirewallDoesNotExist(ctx context.Context, project string, computeService *compute.Service, firewallName string) {
+	_, err := computeService.Firewalls.Get(project, firewallName).Context(ctx).Do()
+	Expect(err).To(HaveOccurred())
+}
+
+func checkFirewallExists(ctx context.Context, project string, computeService *compute.Service, firewallName string) {
+	firewall, err := computeService.Firewalls.Get(project, firewallName).Context(ctx).Do()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(firewall.Name).To(Equal(firewallName))
 }
