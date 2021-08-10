@@ -16,18 +16,26 @@ package bastion_test
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
-	networkingv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"path/filepath"
 	"strings"
 	"time"
 
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	gcpinstall "github.com/gardener/gardener-extension-provider-gcp/pkg/apis/gcp/install"
+	gcpv1alpha1 "github.com/gardener/gardener-extension-provider-gcp/pkg/apis/gcp/v1alpha1"
 	bastionctrl "github.com/gardener/gardener-extension-provider-gcp/pkg/controller/bastion"
 	"github.com/gardener/gardener-extension-provider-gcp/pkg/gcp"
+
+	"github.com/gardener/gardener/extensions/pkg/controller"
+	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
+	"github.com/gardener/gardener/pkg/extensions"
 	gardenerutils "github.com/gardener/gardener/pkg/utils"
 	"github.com/gardener/gardener/test/framework"
 	. "github.com/onsi/ginkgo"
@@ -46,7 +54,7 @@ import (
 )
 
 const (
-// workersSubnetCIDR = "192.168.20.0/24" // this is purposefully not normalised
+	workersSubnetCIDR = "192.168.20.0/24" // this is purposefully not normalised
 // cidrv4                  = "192.168.20.0/24"
 // errCodeFirewallNotFound = 404
 )
@@ -70,7 +78,7 @@ var _ = Describe("Bastion tests", func() {
 		ctx = context.Background()
 
 		logger         *logrus.Entry
-		projectID      string
+		project        string
 		computeService *compute.Service
 
 		// loger logr.Logger
@@ -78,24 +86,24 @@ var _ = Describe("Bastion tests", func() {
 
 		// extensionscluster *extensionsv1alpha1.Cluster
 
-		// cluster *controller.Cluster
+		cluster *controller.Cluster
 		// infrastructureConfig *gcpv1alpha1.InfrastructureConfig
 		testEnv   *envtest.Environment
 		mgrCancel context.CancelFunc
 		c         client.Client
 
-		// opt            *bastionctrl.Options
+		options *bastionctrl.Options
 
-		// bastion *extensionsv1alpha1.Bastion
+		bastion *extensionsv1alpha1.Bastion
 		// newBastion *bastionctrl.Actuator
 		// iamService *iam.Service
 
 	)
 
-	_, err := randomString()
+	_, err := randomString() //todo
 	Expect(err).NotTo(HaveOccurred())
 
-	name := fmt.Sprintf("gcp-bastion-it--%s", "42random")
+	name := fmt.Sprintf("gcp-bastion-it--%s", "42random") //todo
 
 	BeforeSuite(func() {
 		repoRoot := filepath.Join("..", "..", "..")
@@ -153,13 +161,14 @@ var _ = Describe("Bastion tests", func() {
 		flag.Parse()
 		validateFlags()
 
-		projectID, err = gcp.ExtractServiceAccountProjectID([]byte(*serviceAccount))
+		project, err = gcp.ExtractServiceAccountProjectID([]byte(*serviceAccount))
 		Expect(err).NotTo(HaveOccurred())
+
 		computeService, err = compute.NewService(ctx, option.WithCredentialsJSON([]byte(*serviceAccount)), option.WithScopes(compute.CloudPlatformScope))
 		Expect(err).NotTo(HaveOccurred())
 
-		// bastion = createTestBastion(name)
-		// cluster = createGCPTestCluster(name)
+		cluster = createGCPTestCluster(name)
+		bastion, options = createTestBastion(ctx, cluster, name, project)
 
 	})
 
@@ -176,81 +185,66 @@ var _ = Describe("Bastion tests", func() {
 		Expect(testEnv.Stop()).To(Succeed())
 	})
 
-	It("SHOULD CREATE BASTION", func() {
-		time.Sleep(10 * time.Second)
-		bastion := createTestBastion(name)
-		err = c.Create(ctx, bastion)
-		Expect(err).NotTo(HaveOccurred())
+	// It("SHOULD CREATE BASTION", func() {
+	// 	time.Sleep(10 * time.Second)
+	// 	bastion := createTestBastion(name)
+	// 	err = c.Create(ctx, bastion)
+	// 	Expect(err).NotTo(HaveOccurred())
 
-		logger.Info("sleep for 1 minute")
-		time.Sleep(1 * time.Minute)
+	// 	logger.Info("sleep for 1 minute")
+	// 	time.Sleep(1 * time.Minute)
 
-		bastionUpdated := &extensionsv1alpha1.Bastion{}
-		Expect(c.Get(ctx, client.ObjectKey{Namespace: bastion.Namespace, Name: bastion.Name}, bastionUpdated)).To(Succeed())
-		ipAddress := bastionUpdated.Status.Ingress.IP
-		logger.Infof("\n!!!!!!!!!!!!!            BASTION IP ADDRESS: %v\n", ipAddress)
+	// 	bastionUpdated := &extensionsv1alpha1.Bastion{}
+	// 	Expect(c.Get(ctx, client.ObjectKey{Namespace: bastion.Namespace, Name: bastion.Name}, bastionUpdated)).To(Succeed())
+	// 	ipAddress := bastionUpdated.Status.Ingress.IP
+	// 	logger.Infof("\n!!!!!!!!!!!!!            BASTION IP ADDRESS: %v\n", ipAddress)
 
-		//command := []string{"-vznw", "60", ipAddress, fmt.Sprint(22)}
-		//cmd := exec.Command("/usr/bin/nc", command...)
-		//err := cmd.Run()
-		//Expect(err).NotTo(HaveOccurred())
+	//command := []string{"-vznw", "60", ipAddress, fmt.Sprint(22)}
+	//cmd := exec.Command("/usr/bin/nc", command...)
+	//err := cmd.Run()
+	//Expect(err).NotTo(HaveOccurred())
 
-		time.Sleep(2 * time.Minute)
-		err = c.Delete(ctx, bastion)
-		Expect(err).NotTo(HaveOccurred())
-		logger.Info("Bastion deleted.")
-	})
+	// 	time.Sleep(2 * time.Minute)
+	// 	err = c.Delete(ctx, bastion)
+	// 	Expect(err).NotTo(HaveOccurred())
+	// 	logger.Info("Bastion deleted.")
+	// })
 
 	It("should successfully create and delete", func() {
 		By("setup Infrastructure")
-		networkName := name
-
-		err = prepareNewNetwork(ctx, logger, projectID, computeService, networkName)
+		err = prepareNewNetwork(ctx, logger, project, computeService, name)
 		Expect(err).NotTo(HaveOccurred())
-
 		framework.AddCleanupAction(func() {
-			err = teardownNetwork(ctx, logger, projectID, computeService, networkName)
+			err = teardownNetwork(ctx, logger, project, computeService, name)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
-		// By("setup bastion")
+		By("setup bastion")
+		err = c.Create(ctx, bastion)
+		Expect(err).NotTo(HaveOccurred())
 
-		// newBastion := bastionctrl.NewActuator()
+		framework.AddCleanupAction(func() {
+			teardownBastion(ctx, logger, c, bastion)
 
-		// err = newBastion.Reconcile(ctx, bastion, cluster)
-		// Expect(err).NotTo(HaveOccurred())
-		// framework.AddCleanupAction(func() {
-		// 	newBastion.Delete(ctx, bastion, cluster)
+			By("verify bastion deletion")
+			verifyDeletion(ctx, project, computeService, options) //todo
+		})
 
-		// 	By("verify bastion deletion")
-		// 	verifyDeletion(ctx, gcpClient, options)
-		// })
+		By("wait until bastion is reconciled")
+		Expect(extensions.WaitUntilExtensionObjectReady(
+			ctx,
+			c,
+			logger,
+			bastion,
+			extensionsv1alpha1.BastionResource,
+			10*time.Second,
+			30*time.Second,
+			5*time.Minute,
+			nil,
+		)).To(Succeed())
 
-		// By("wait until bastion is reconciled")
-		// Expect(extensions.WaitUntilExtensionObjectReady(
-		// 	ctx,
-		// 	c,
-		// 	logger,
-		// 	bastion,
-		// 	extensionsv1alpha1.BastionResource,
-		// 	10*time.Second,
-		// 	30*time.Second,
-		// 	5*time.Minute,
-		// 	nil,
-		// )).To(Succeed())
-
-		// // update the options to have the just created security group's ID
-		// securityGroup := getSecurityGroup(ctx, awsClient, options, options.BastionSecurityGroupName)
-		// options.BastionSecurityGroupID = *securityGroup.GroupId
-
-		// By("refetch bastion resource")
-		// Expect(c.Get(ctx, client.ObjectKey{Namespace: bastion.Namespace, Name: bastion.Name}, bastion)).To(Succeed())
-
-		// By("verify the bastion's status contains endpoints")
-		// Expect(bastionctrl.IngressReady(&bastion.Status.Ingress)).To(BeTrue())
-
-		// By("verify cloud resources")
-		// verifyCreation(ctx, awsClient, options)
+		By("verify cloud resources")
+		verifyCreation(ctx, project, computeService, options) //todo
 	})
 })
 
@@ -324,7 +318,7 @@ func getResourceNameFromSelfLink(link string) string {
 	return parts[len(parts)-1]
 }
 
-func createTestBastion(name string) *extensionsv1alpha1.Bastion {
+func createTestBastion(ctx context.Context, cluster *extensions.Cluster, name string, project string) (*extensionsv1alpha1.Bastion, *bastionctrl.Options) {
 	bastion := &extensionsv1alpha1.Bastion{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name + "-bastion",
@@ -343,51 +337,110 @@ func createTestBastion(name string) *extensionsv1alpha1.Bastion {
 		},
 	}
 
-	return bastion
+	options, err := bastionctrl.DetermineOptions(bastion, cluster, project)
+	Expect(err).NotTo(HaveOccurred())
+
+	return bastion, options
 }
 
-// func createInfrastructure() *gcpv1alpha1.InfrastructureConfig {
-// 	infrastructureConfig := &gcpv1alpha1.InfrastructureConfig{
-// 		TypeMeta: metav1.TypeMeta{
-// 			APIVersion: gcpv1alpha1.SchemeGroupVersion.String(),
-// 			Kind:       "InfrastructureConfig",
-// 		},
-// 		Networks: gcpv1alpha1.NetworkConfig{
-// 			Workers: workersSubnetCIDR,
-// 		},
-// 	}
-// 	return infrastructureConfig
-// }
+func createInfrastructure() *gcpv1alpha1.InfrastructureConfig {
+	infrastructureConfig := &gcpv1alpha1.InfrastructureConfig{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: gcpv1alpha1.SchemeGroupVersion.String(),
+			Kind:       "InfrastructureConfig",
+		},
+		Networks: gcpv1alpha1.NetworkConfig{
+			Workers: workersSubnetCIDR,
+		},
+	}
+	return infrastructureConfig
+}
 
-// func createShootTestStruct() *gardencorev1beta1.Shoot {
-// 	json, _ := json.Marshal(createInfrastructure())
+func createShootTestStruct() *gardencorev1beta1.Shoot {
+	json, _ := json.Marshal(createInfrastructure())
 
-// 	shoot := &gardencorev1beta1.Shoot{
-// 		Spec: gardencorev1beta1.ShootSpec{
-// 			Region: "us-west",
-// 			Provider: gardencorev1beta1.Provider{
-// 				InfrastructureConfig: &runtime.RawExtension{
-// 					Raw: []byte(json),
-// 				}}},
-// 	}
-// 	return shoot
-// }
+	shoot := &gardencorev1beta1.Shoot{
+		Spec: gardencorev1beta1.ShootSpec{
+			Region: "us-west",
+			Provider: gardencorev1beta1.Provider{
+				InfrastructureConfig: &runtime.RawExtension{
+					Raw: []byte(json),
+				}}},
+	}
+	return shoot
+}
 
-// func createGCPTestCluster(name string) *extensions.Cluster {
-// 	cluster := &controller.Cluster{
-// 		ObjectMeta: metav1.ObjectMeta{Name: name},
-// 		Shoot:      createShootTestStruct(),
-// 		CloudProfile: &gardencorev1beta1.CloudProfile{
-// 			Spec: gardencorev1beta1.CloudProfileSpec{
-// 				Regions: []gardencorev1beta1.Region{
-// 					{Name: *region},
-// 					{Name: "us-west", Zones: []gardencorev1beta1.AvailabilityZone{
-// 						{Name: "us-west1-a"},
-// 						{Name: "us-west1-b"},
-// 					}},
-// 				},
-// 			},
-// 		},
-// 	}
-// 	return cluster
-// }
+func createGCPTestCluster(name string) *extensions.Cluster {
+	cluster := &controller.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Shoot:      createShootTestStruct(),
+		CloudProfile: &gardencorev1beta1.CloudProfile{
+			Spec: gardencorev1beta1.CloudProfileSpec{
+				Regions: []gardencorev1beta1.Region{
+					{Name: *region},
+					{Name: "us-west", Zones: []gardencorev1beta1.AvailabilityZone{
+						{Name: "us-west1-a"},
+						{Name: "us-west1-b"},
+					}},
+				},
+			},
+		},
+	}
+	return cluster
+}
+
+func teardownBastion(ctx context.Context, logger *logrus.Entry, c client.Client, bastion *extensionsv1alpha1.Bastion) {
+	By("delete bastion")
+	Expect(client.IgnoreNotFound(c.Delete(ctx, bastion))).To(Succeed())
+
+	By("wait until bastion is deleted")
+	err := extensions.WaitUntilExtensionObjectDeleted(
+		ctx,
+		c,
+		logger,
+		bastion,
+		extensionsv1alpha1.BastionResource,
+		10*time.Second,
+		16*time.Minute,
+	)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+func verifyCreation( //todo
+	ctx context.Context,
+	project string,
+	computeService *compute.Service,
+	options *bastionctrl.Options,
+) {
+
+	// bastion firewall
+	firewall, err := computeService.Firewalls.Get(project, "xxxxx---sshallow").Context(ctx).Do()
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(firewall.Name).To(HaveLen(1))
+
+	// ingress permissions
+
+	// egress permissions
+
+	// worker security group
+
+	// bastion instance
+
+}
+
+func verifyDeletion(
+	ctx context.Context,
+	project string,
+	computeService *compute.Service,
+	options *bastionctrl.Options,
+) {
+
+	// bastion firewalls should be gone
+	_, err := computeService.Firewalls.Get(project, "xxxxx---ssh").Context(ctx).Do()
+	Expect(err).To(BeNotFoundError())
+
+	// instance should be terminated
+
+	// instance should be terminated
+}

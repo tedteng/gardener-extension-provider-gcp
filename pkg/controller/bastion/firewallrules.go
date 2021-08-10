@@ -20,7 +20,7 @@ import (
 	"google.golang.org/api/compute/v1"
 )
 
-func IngressAllowSSH(opt *Options) *compute.Firewall {
+func ingressAllowSSH(opt *Options) *compute.Firewall {
 	return &compute.Firewall{
 		Allowed:      []*compute.FirewallAllowed{{IPProtocol: "tcp", Ports: []string{strconv.Itoa(SSHPort)}}},
 		Description:  "SSH access for Bastion",
@@ -33,7 +33,7 @@ func IngressAllowSSH(opt *Options) *compute.Firewall {
 	}
 }
 
-func EgressDenyAll(opt *Options) *compute.Firewall {
+func egressDenyAll(opt *Options) *compute.Firewall {
 	return &compute.Firewall{
 		Denied:            []*compute.FirewallDenied{{IPProtocol: "all"}},
 		Description:       "Bastion egress deny",
@@ -46,7 +46,7 @@ func EgressDenyAll(opt *Options) *compute.Firewall {
 	}
 }
 
-func EgressAllowOnly(opt *Options) *compute.Firewall {
+func egressAllowOnly(opt *Options) *compute.Firewall {
 	return &compute.Firewall{
 		Allowed:           []*compute.FirewallAllowed{{IPProtocol: "tcp", Ports: []string{strconv.Itoa(SSHPort)}}},
 		Description:       "Allow Bastion egress to Shoot workers",
@@ -59,6 +59,6 @@ func EgressAllowOnly(opt *Options) *compute.Firewall {
 	}
 }
 
-func PatchCIDRs(opt *Options) *compute.Firewall {
+func patchCIDRs(opt *Options) *compute.Firewall {
 	return &compute.Firewall{SourceRanges: opt.CIDRs}
 }

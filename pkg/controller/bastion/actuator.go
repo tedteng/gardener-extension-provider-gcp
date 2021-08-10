@@ -51,12 +51,6 @@ type actuator struct {
 	logger logr.Logger
 }
 
-func NewActuator() bastion.Actuator {
-	return &actuator{
-		logger: logger,
-	}
-}
-
 func newActuator() bastion.Actuator {
 	return &actuator{
 		logger: logger,
@@ -87,7 +81,7 @@ func getFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Op
 	return firewall, nil
 }
 
-func CreateFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, rb *compute.Firewall) error {
+func createFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, rb *compute.Firewall) error {
 	if _, err := gcpclient.Firewalls().Insert(opt.ProjectID, rb).Context(ctx).Do(); err != nil {
 		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == errCodeFirewallExists {
 			logger.Info("Firewall rule already exits,", "firewall_rule_name", rb.Name)
@@ -114,7 +108,7 @@ func deleteFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt 
 }
 
 func patchFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, firewallRuleName string) error {
-	if _, err := gcpclient.Firewalls().Patch(opt.ProjectID, firewallRuleName, PatchCIDRs(opt)).Context(ctx).Do(); err != nil {
+	if _, err := gcpclient.Firewalls().Patch(opt.ProjectID, firewallRuleName, patchCIDRs(opt)).Context(ctx).Do(); err != nil {
 		return err
 	}
 	return nil
