@@ -124,48 +124,17 @@ func ensureBastionInstance(ctx context.Context, logger logr.Logger, bastion *ext
 	if endpoints != nil {
 		return endpoints, nil
 	}
-
 	logger.Info("Running new bastion instance")
 
-	disk, err := getDisk(ctx, gcpclient, opt)
+	_, err = createDisk(ctx, gcpclient, opt)
 	if err != nil {
 		return nil, err
+	} else {
+		logger.Info("Disk created", "disk", opt.DiskName)
 	}
 
-	if disk == nil {
-		disk = &compute.Disk{
-			Description: "Gardenctl Bastion disk",
-			Name:        opt.DiskName,
-			SizeGb:      10,
-			SourceImage: "projects/debian-cloud/global/images/family/debian-10",
-			Zone:        opt.Zone,
-		}
-
-		_, err = gcpclient.Disks().Insert(opt.ProjectID, opt.Zone, disk).Context(ctx).Do()
-		if err != nil {
-			return nil, fmt.Errorf("%w, failed to create disk", err)
-		}
-	}
-
-	logger.Info("Disk created", "disk", opt.DiskName)
-
-	disks := []*compute.AttachedDisk{
-		{
-			AutoDelete: true,
-			Boot:       true,
-			DiskSizeGb: 10,
-			Source:     "projects/" + opt.ProjectID + "/zones/" + opt.Zone + "/disks/" + opt.DiskName,
-			Mode:       "READ_WRITE",
-		},
-	}
-
-	networkInterfaces := []*compute.NetworkInterface{
-		{
-			Network:       opt.Network,
-			Subnetwork:    opt.Subnetwork,
-			AccessConfigs: []*compute.AccessConfig{{Name: "External NAT", Type: "ONE_TO_ONE_NAT"}},
-		},
-	}
+	disks := createAttachedDisks(opt)
+	networkInterfaces := createNetworkInterfaces(opt)
 
 	machineType := "zones/" + opt.Zone + "/machineTypes/n1-standard-1"
 
@@ -174,29 +143,12 @@ func ensureBastionInstance(ctx context.Context, logger logr.Logger, bastion *ext
 		return nil, err
 	}
 
-	metadataItems := []*compute.MetadataItems{
-		{
-			Key:   "startup-script",
-			Value: pointer.StringPtr(string(bastion.Spec.UserData)),
-		},
-	}
+	metadataItems := createMetadataItems(bastion)
 
 	if instance != nil {
 		logger.Info("Existing bastion compute instance found", "compute_instance_name", instance.Name)
 	} else {
-		instance := &compute.Instance{
-			Disks:              disks,
-			DeletionProtection: false,
-			Description:        "Bastion Instance",
-			Name:               opt.BastionInstanceName,
-			Zone:               opt.Zone,
-			MachineType:        machineType,
-			NetworkInterfaces:  networkInterfaces,
-			Tags:               &compute.Tags{Items: []string{opt.BastionInstanceName}},
-			Metadata:           &compute.Metadata{Items: metadataItems},
-		}
-
-		_, err = gcpclient.Instances().Insert(opt.ProjectID, opt.Zone, instance).Context(ctx).Do()
+		err := createComputeInstances(ctx, gcpclient, opt, disks, networkInterfaces, machineType, metadataItems)
 		if err != nil {
 			return nil, fmt.Errorf("%w, failed to create instance", err)
 		}
@@ -288,4 +240,75 @@ func addressToIngress(dnsName *string, ipAddress *string) *corev1.LoadBalancerIn
 	}
 
 	return ingress
+}
+
+func createDisk(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (*compute.Disk, error) {
+	disk, err := getDisk(ctx, gcpclient, opt)
+	if err != nil {
+		return nil, err
+	}
+
+	if disk == nil {
+		disk = &compute.Disk{
+			Description: "Gardenctl Bastion disk",
+			Name:        opt.DiskName,
+			SizeGb:      10,
+			SourceImage: "projects/debian-cloud/global/images/family/debian-10",
+			Zone:        opt.Zone,
+		}
+
+		_, err = gcpclient.Disks().Insert(opt.ProjectID, opt.Zone, disk).Context(ctx).Do()
+		if err != nil {
+			return nil, fmt.Errorf("%w, failed to create disk", err)
+		}
+	}
+	return disk, err
+}
+
+func createAttachedDisks(opt *Options) []*compute.AttachedDisk {
+	return ([]*compute.AttachedDisk{
+		{
+			AutoDelete: true,
+			Boot:       true,
+			DiskSizeGb: 10,
+			Source:     "projects/" + opt.ProjectID + "/zones/" + opt.Zone + "/disks/" + opt.DiskName,
+			Mode:       "READ_WRITE",
+		},
+	})
+}
+
+func createNetworkInterfaces(opt *Options) []*compute.NetworkInterface {
+	return ([]*compute.NetworkInterface{
+		{
+			Network:       opt.Network,
+			Subnetwork:    opt.Subnetwork,
+			AccessConfigs: []*compute.AccessConfig{{Name: "External NAT", Type: "ONE_TO_ONE_NAT"}},
+		},
+	})
+}
+
+func createMetadataItems(bastion *extensionsv1alpha1.Bastion) []*compute.MetadataItems {
+	return ([]*compute.MetadataItems{
+		{
+			Key:   "startup-script",
+			Value: pointer.StringPtr(string(bastion.Spec.UserData)),
+		},
+	})
+}
+
+func createComputeInstances(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, disks []*compute.AttachedDisk, networkInterfaces []*compute.NetworkInterface, machineType string, metadataItems []*compute.MetadataItems) error {
+	instance := &compute.Instance{
+		Disks:              disks,
+		DeletionProtection: false,
+		Description:        "Bastion Instance",
+		Name:               opt.BastionInstanceName,
+		Zone:               opt.Zone,
+		MachineType:        machineType,
+		NetworkInterfaces:  networkInterfaces,
+		Tags:               &compute.Tags{Items: []string{opt.BastionInstanceName}},
+		Metadata:           &compute.Metadata{Items: metadataItems},
+	}
+
+	_, err := gcpclient.Instances().Insert(opt.ProjectID, opt.Zone, instance).Context(ctx).Do()
+	return err
 }
