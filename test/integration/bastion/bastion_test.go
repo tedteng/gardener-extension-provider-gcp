@@ -27,10 +27,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	gcpapi "github.com/gardener/gardener-extension-provider-gcp/pkg/apis/gcp"
 	gcpinstall "github.com/gardener/gardener-extension-provider-gcp/pkg/apis/gcp/install"
-	gcpv1alpha1 "github.com/gardener/gardener-extension-provider-gcp/pkg/apis/gcp/v1alpha1"
 	bastionctrl "github.com/gardener/gardener-extension-provider-gcp/pkg/controller/bastion"
-	"github.com/gardener/gardener-extension-provider-gcp/pkg/gcp"
+	gcp "github.com/gardener/gardener-extension-provider-gcp/pkg/gcp"
 	"github.com/gardener/gardener/extensions/pkg/controller"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
@@ -39,6 +39,7 @@ import (
 	"github.com/gardener/gardener/test/framework"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/sirupsen/logrus"
 	"google.golang.org/api/compute/v1"
@@ -53,7 +54,8 @@ import (
 )
 
 const (
-	workersSubnetCIDR = "192.168.20.0/24" // this is purposefully not normalised
+	workersSubnetCIDR = "165.1.187.0/24"
+
 // cidrv4                  = "192.168.20.0/24"
 // errCodeFirewallNotFound = 404
 )
@@ -83,9 +85,9 @@ var _ = Describe("Bastion tests", func() {
 		// loger logr.Logger
 		// clientcontext *common.ClientContext
 
-		// extensionscluster *extensionsv1alpha1.Cluster
+		extensionscluster *extensionsv1alpha1.Cluster
 
-		cluster *controller.Cluster
+		controllercluster *controller.Cluster
 		// infrastructureConfig *gcpv1alpha1.InfrastructureConfig
 		testEnv   *envtest.Environment
 		mgrCancel context.CancelFunc
@@ -103,6 +105,7 @@ var _ = Describe("Bastion tests", func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	name := fmt.Sprintf("gcp-bastion-it--%s", "42random") //todo
+	// routerName := name + "-cloud-router"
 
 	BeforeSuite(func() {
 		repoRoot := filepath.Join("..", "..", "..")
@@ -158,7 +161,7 @@ var _ = Describe("Bastion tests", func() {
 		Expect(c).NotTo(BeNil())
 
 		flag.Parse()
-		validateFlags()
+		// validateFlags()
 
 		project, err = gcp.ExtractServiceAccountProjectID([]byte(*serviceAccount))
 		Expect(err).NotTo(HaveOccurred())
@@ -166,8 +169,8 @@ var _ = Describe("Bastion tests", func() {
 		computeService, err = compute.NewService(ctx, option.WithCredentialsJSON([]byte(*serviceAccount)), option.WithScopes(compute.CloudPlatformScope))
 		Expect(err).NotTo(HaveOccurred())
 
-		cluster = createGCPTestCluster(name)
-		bastion, options = createTestBastion(ctx, cluster, name, project)
+		extensionscluster, controllercluster = createClusters(name)
+		bastion, options = createTestBastion(ctx, controllercluster, name, project)
 
 	})
 
@@ -184,38 +187,19 @@ var _ = Describe("Bastion tests", func() {
 		Expect(testEnv.Stop()).To(Succeed())
 	})
 
-	// It("SHOULD CREATE BASTION", func() {
-	// 	time.Sleep(10 * time.Second)
-	// 	bastion := createTestBastion(name)
-	// 	err = c.Create(ctx, bastion)
-	// 	Expect(err).NotTo(HaveOccurred())
-
-	// 	logger.Info("sleep for 1 minute")
-	// 	time.Sleep(1 * time.Minute)
-
-	// 	bastionUpdated := &extensionsv1alpha1.Bastion{}
-	// 	Expect(c.Get(ctx, client.ObjectKey{Namespace: bastion.Namespace, Name: bastion.Name}, bastionUpdated)).To(Succeed())
-	// 	ipAddress := bastionUpdated.Status.Ingress.IP
-	// 	logger.Infof("\n!!!!!!!!!!!!!            BASTION IP ADDRESS: %v\n", ipAddress)
-
-	//command := []string{"-vznw", "60", ipAddress, fmt.Sprint(22)}
-	//cmd := exec.Command("/usr/bin/nc", command...)
-	//err := cmd.Run()
-	//Expect(err).NotTo(HaveOccurred())
-
-	// 	time.Sleep(2 * time.Minute)
-	// 	err = c.Delete(ctx, bastion)
-	// 	Expect(err).NotTo(HaveOccurred())
-	// 	logger.Info("Bastion deleted.")
-	// })
-
 	It("should successfully create and delete", func() {
-		By("setup Infrastructure")
-		err = prepareNewNetwork(ctx, logger, project, computeService, name)
-		Expect(err).NotTo(HaveOccurred())
+		// By("setup Infrastructure")
+		// err = prepareNewNetwork(ctx, logger, project, computeService, name, routerName)
+		// Expect(err).NotTo(HaveOccurred())
+		// framework.AddCleanupAction(func() {
+		// 	err = teardownNetwork(ctx, logger, project, computeService, name, routerName)
+		// 	Expect(err).NotTo(HaveOccurred())
+		// })
+
+		By("create namespace for test execution")
+		setupEnvironmentObjects(ctx, c, namespace(name), extensionscluster)
 		framework.AddCleanupAction(func() {
-			err = teardownNetwork(ctx, logger, project, computeService, name)
-			Expect(err).NotTo(HaveOccurred())
+			teardownShootEnvironment(ctx, c, namespace(name), extensionscluster)
 		})
 
 		By("setup bastion")
@@ -256,7 +240,7 @@ func randomString() (string, error) {
 	return suffix, nil
 }
 
-func prepareNewNetwork(ctx context.Context, logger *logrus.Entry, project string, computeService *compute.Service, networkName string) error {
+func prepareNewNetwork(ctx context.Context, logger *logrus.Entry, project string, computeService *compute.Service, networkName string, routerName string) error {
 	network := &compute.Network{
 		Name:                  networkName,
 		AutoCreateSubnetworks: false,
@@ -274,10 +258,34 @@ func prepareNewNetwork(ctx context.Context, logger *logrus.Entry, project string
 		return err
 	}
 
+	router := &compute.Router{
+		Name:    routerName,
+		Network: networkOp.TargetLink,
+	}
+	routerOp, err := computeService.Routers.Insert(project, *region, router).Context(ctx).Do()
+	if err != nil {
+		return err
+	}
+	logger.Info("Waiting until router is created...", "router", routerName)
+	if err := waitForOperation(ctx, project, computeService, routerOp); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func teardownNetwork(ctx context.Context, logger *logrus.Entry, project string, computeService *compute.Service, networkName string) error {
+func teardownNetwork(ctx context.Context, logger *logrus.Entry, project string, computeService *compute.Service, networkName string, routerName string) error {
+
+	routerOp, err := computeService.Routers.Delete(project, *region, routerName).Context(ctx).Do()
+	if err != nil {
+		return err
+	}
+
+	logger.Info("Waiting until router is deleted...", "router", routerName)
+	if err := waitForOperation(ctx, project, computeService, routerOp); err != nil {
+		return err
+	}
+
 	networkOp, err := computeService.Networks.Delete(project, networkName).Context(ctx).Do()
 	if err != nil {
 		return err
@@ -317,11 +325,11 @@ func getResourceNameFromSelfLink(link string) string {
 	return parts[len(parts)-1]
 }
 
-func createTestBastion(ctx context.Context, cluster *extensions.Cluster, name string, project string) (*extensionsv1alpha1.Bastion, *bastionctrl.Options) {
+func createTestBastion(ctx context.Context, cluster *controller.Cluster, name string, project string) (*extensionsv1alpha1.Bastion, *bastionctrl.Options) {
 	bastion := &extensionsv1alpha1.Bastion{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name + "-bastion",
-			Namespace: "shoot--core--d071785-test1",
+			Namespace: name,
 		},
 		Spec: extensionsv1alpha1.BastionSpec{
 			DefaultSpec: extensionsv1alpha1.DefaultSpec{
@@ -342,25 +350,24 @@ func createTestBastion(ctx context.Context, cluster *extensions.Cluster, name st
 	return bastion, options
 }
 
-func createInfrastructure() *gcpv1alpha1.InfrastructureConfig {
-	infrastructureConfig := &gcpv1alpha1.InfrastructureConfig{
+func createInfrastructure() *gcpapi.InfrastructureConfig {
+	return &gcpapi.InfrastructureConfig{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: gcpv1alpha1.SchemeGroupVersion.String(),
+			APIVersion: gcpapi.SchemeGroupVersion.String(),
 			Kind:       "InfrastructureConfig",
 		},
-		Networks: gcpv1alpha1.NetworkConfig{
+		Networks: gcpapi.NetworkConfig{
 			Workers: workersSubnetCIDR,
 		},
 	}
-	return infrastructureConfig
 }
 
-func createShootTestStruct() *gardencorev1beta1.Shoot {
+func createShootTestStruct(name string) *gardencorev1beta1.Shoot {
 	json, _ := json.Marshal(createInfrastructure())
 
 	shoot := &gardencorev1beta1.Shoot{
 		Spec: gardencorev1beta1.ShootSpec{
-			Region: "us-west",
+			Region: *region,
 			Provider: gardencorev1beta1.Provider{
 				InfrastructureConfig: &runtime.RawExtension{
 					Raw: []byte(json),
@@ -369,15 +376,29 @@ func createShootTestStruct() *gardencorev1beta1.Shoot {
 	return shoot
 }
 
-func createGCPTestCluster(name string) *extensions.Cluster {
+func createClusters(name string) (*extensionsv1alpha1.Cluster, *controller.Cluster) {
+	infrastructureConfig := createInfrastructure()
+	shootJSON, _ := json.Marshal(&infrastructureConfig)
+	extensionscluster := &extensionsv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: extensionsv1alpha1.ClusterSpec{
+			Shoot: runtime.RawExtension{
+				Object: createShootTestStruct(name),
+				Raw:    shootJSON,
+			},
+		},
+	}
+
 	cluster := &controller.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Shoot:      createShootTestStruct(),
+		Shoot:      createShootTestStruct(name),
 		CloudProfile: &gardencorev1beta1.CloudProfile{
 			Spec: gardencorev1beta1.CloudProfileSpec{
 				Regions: []gardencorev1beta1.Region{
 					{Name: *region},
-					{Name: "us-west", Zones: []gardencorev1beta1.AvailabilityZone{
+					{Name: "us-west1", Zones: []gardencorev1beta1.AvailabilityZone{
 						{Name: "us-west1-a"},
 						{Name: "us-west1-b"},
 					}},
@@ -385,7 +406,7 @@ func createGCPTestCluster(name string) *extensions.Cluster {
 			},
 		},
 	}
-	return cluster
+	return extensionscluster, cluster
 }
 
 func teardownBastion(ctx context.Context, logger *logrus.Entry, c client.Client, bastion *extensionsv1alpha1.Bastion) {
@@ -466,4 +487,32 @@ func checkFirewallExists(ctx context.Context, project string, computeService *co
 	firewall, err := computeService.Firewalls.Get(project, firewallName).Context(ctx).Do()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(firewall.Name).To(Equal(firewallName))
+}
+
+func namespace(name string) *corev1.Namespace {
+	return &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+	}
+}
+func setupEnvironmentObjects(ctx context.Context, c client.Client, namespace *corev1.Namespace, cluster *extensionsv1alpha1.Cluster) {
+	Expect(c.Create(ctx, namespace)).To(Succeed())
+	Expect(c.Create(ctx, cluster)).To(Succeed())
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cloudprovider",
+			Namespace: namespace.Name,
+		},
+		Data: map[string][]byte{
+			gcp.ServiceAccountJSONField: []byte(*serviceAccount),
+		},
+	}
+	Expect(c.Create(ctx, secret)).To(Succeed())
+}
+
+func teardownShootEnvironment(ctx context.Context, c client.Client, namespace *corev1.Namespace, cluster *extensionsv1alpha1.Cluster) {
+	Expect(client.IgnoreNotFound(c.Delete(ctx, namespace))).To(Succeed())
+	Expect(client.IgnoreNotFound(c.Delete(ctx, cluster))).To(Succeed())
 }
