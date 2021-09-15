@@ -17,17 +17,17 @@ package bastion
 import (
 	"context"
 	"fmt"
-	"reflect"
-	"runtime"
 	"testing"
 
 	mockgcpclient "github.com/gardener/gardener-extension-provider-gcp/pkg/internal/mock/client"
+
 	"github.com/gardener/gardener/extensions/pkg/controller"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	"github.com/gardener/gardener/pkg/extensions"
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	"google.golang.org/api/compute/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -68,9 +68,7 @@ var _ = Describe("Bastion", func() {
 	Describe("Determine options", func() {
 		It("should return options", func() {
 			options, err := DetermineOptions(bastion, cluster, "projectID")
-			if err != nil {
-				fmt.Println(err)
-			}
+			Expect(err).To(Not(HaveOccurred()))
 
 			Expect(options.BastionInstanceName).To(Equal("cluster1-bastionName1-bastion-1cdc8"))
 			Expect(options.Zone).To(Equal("us-west1-a"))
@@ -108,30 +106,18 @@ var _ = Describe("Bastion", func() {
 			Expect(res).ToNot(Equal(res2))
 		})
 
-		It("should generate names and fit maximum length", func() {
-			nameGenerators := []func(string) string{
-				DiskResourceName,
-				NodesResourceName,
-				FirewallIngressAllowSSHResourceName,
-				FirewallEgressAllowOnlyResourceName,
-				FirewallEgressDenyAllResourceName,
-			}
-
-			expectedGeneratedNames := []string{
-				"clusterName-LetsExceed63LenLimit0-bastion-139c4-disk",
-				"clusterName-LetsExceed63LenLimit0-bastion-139c4-nodes",
-				"clusterName-LetsExceed63LenLimit0-bastion-139c4-allow-ssh",
-				"clusterName-LetsExceed63LenLimit0-bastion-139c4-egress-worker",
-				"clusterName-LetsExceed63LenLimit0-bastion-139c4-deny-all",
-			}
-
-			baseName, _ := generateBastionBaseResourceName("clusterName", "LetsExceed63LenLimit012345678901234567890123456789012345678901234567890123456789")
-			for index, fun := range nameGenerators {
-				result := fun(baseName)
-				Expect(len(result)).Should(BeNumerically("<", maxLengthForResource), "failed function: %v", runtime.FuncForPC(reflect.ValueOf(fun).Pointer()).Name())
-				Expect(result).Should(Equal(expectedGeneratedNames[index]))
-			}
-		})
+		baseName, _ := generateBastionBaseResourceName("clusterName", "LetsExceed63LenLimit012345678901234567890123456789012345678901234567890123456789")
+		DescribeTable("should generate names and fit maximum length",
+			func(input string, expectedOut string) {
+				Expect(len(input)).Should(BeNumerically("<", maxLengthForResource))
+				Expect(input).Should(Equal(expectedOut))
+			},
+			Entry("disk resource name", DiskResourceName(baseName), "clusterName-LetsExceed63LenLimit0-bastion-139c4-disk"),
+			Entry("nodes resource name", NodesResourceName(baseName), "clusterName-LetsExceed63LenLimit0-bastion-139c4-nodes"),
+			Entry("firewall ingress ssh resource name", FirewallIngressAllowSSHResourceName(baseName), "clusterName-LetsExceed63LenLimit0-bastion-139c4-allow-ssh"),
+			Entry("firewall egress allow resource name", FirewallEgressAllowOnlyResourceName(baseName), "clusterName-LetsExceed63LenLimit0-bastion-139c4-egress-worker"),
+			Entry("firewall egress deny resource name", FirewallEgressDenyAllResourceName(baseName), "clusterName-LetsExceed63LenLimit0-bastion-139c4-deny-all"),
+		)
 	})
 
 	Describe("check getZone", func() {
@@ -213,7 +199,7 @@ var _ = Describe("Bastion", func() {
 		It("should patch firewalls", func() {
 			var (
 				ctx                = context.TODO()
-				firewallName       = fmt.Sprintf("%sfw", "test-")
+				firewallName       = "test-fw"
 				client             = mockgcpclient.NewMockInterface(ctrl)
 				firewalls          = mockgcpclient.NewMockFirewallsService(ctrl)
 				firewallsPatchCall = mockgcpclient.NewMockFirewallsPatchCall(ctrl)

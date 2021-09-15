@@ -20,7 +20,7 @@ import (
 	"google.golang.org/api/compute/v1"
 )
 
-//IngressAllowSSH ingress rule to allow ssh access
+// IngressAllowSSH ingress rule to allow ssh access
 func IngressAllowSSH(opt *Options) *compute.Firewall {
 	return &compute.Firewall{
 		Allowed:      []*compute.FirewallAllowed{{IPProtocol: "tcp", Ports: []string{strconv.Itoa(SSHPort)}}},
@@ -34,7 +34,7 @@ func IngressAllowSSH(opt *Options) *compute.Firewall {
 	}
 }
 
-//EgressDenyAll egress rule to deny all
+// EgressDenyAll egress rule to deny all
 func EgressDenyAll(opt *Options) *compute.Firewall {
 	return &compute.Firewall{
 		Denied:            []*compute.FirewallDenied{{IPProtocol: "all"}},
@@ -48,7 +48,7 @@ func EgressDenyAll(opt *Options) *compute.Firewall {
 	}
 }
 
-//EgressAllowOnly egress rule to allow ssh traffic to workers cidr range.
+// EgressAllowOnly egress rule to allow ssh traffic to workers cidr range.
 func EgressAllowOnly(opt *Options) *compute.Firewall {
 	return &compute.Firewall{
 		Allowed:           []*compute.FirewallAllowed{{IPProtocol: "tcp", Ports: []string{strconv.Itoa(SSHPort)}}},
@@ -62,7 +62,7 @@ func EgressAllowOnly(opt *Options) *compute.Firewall {
 	}
 }
 
-//patchCIDRs use for patchFirewallRule to patch the firewall rule
+// patchCIDRs use for patchFirewallRule to patch the firewall rule
 func patchCIDRs(opt *Options) *compute.Firewall {
 	return &compute.Firewall{SourceRanges: opt.CIDRs}
 }

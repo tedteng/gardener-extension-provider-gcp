@@ -18,21 +18,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 
 	gcpapi "github.com/gardener/gardener-extension-provider-gcp/pkg/apis/gcp"
 	"github.com/gardener/gardener-extension-provider-gcp/pkg/gcp"
-	"github.com/gardener/gardener/extensions/pkg/controller"
-	"github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
-	"github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
-	v1 "k8s.io/api/core/v1"
-
 	gcpclient "github.com/gardener/gardener-extension-provider-gcp/pkg/internal/client"
+
+	"github.com/gardener/gardener/extensions/pkg/controller"
 	"github.com/gardener/gardener/extensions/pkg/controller/bastion"
 	"github.com/gardener/gardener/extensions/pkg/controller/common"
+	"github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
+	"github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	"github.com/go-logr/logr"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
+	corev1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -58,7 +59,7 @@ func newActuator() bastion.Actuator {
 func getBastionInstance(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (*compute.Instance, error) {
 	instance, err := gcpclient.Instances().Get(opt.ProjectID, opt.Zone, opt.BastionInstanceName).Context(ctx).Do()
 	if err != nil {
-		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == errCodeInstanceNotFound {
+		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == http.StatusNotFound {
 			return nil, nil
 		}
 		return nil, err
@@ -69,7 +70,7 @@ func getBastionInstance(ctx context.Context, gcpclient gcpclient.Interface, opt 
 func getFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, firewallRuleName string) (*compute.Firewall, error) {
 	firewall, err := gcpclient.Firewalls().Get(opt.ProjectID, firewallRuleName).Context(ctx).Do()
 	if err != nil {
-		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == errCodeFirewallNotFound {
+		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == http.StatusNotFound {
 			return nil, nil
 		}
 		return nil, err
@@ -79,7 +80,7 @@ func getFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Op
 
 func createFirewallRuleIfNotExist(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, firewallRule *compute.Firewall) error {
 	if _, err := gcpclient.Firewalls().Insert(opt.ProjectID, firewallRule).Context(ctx).Do(); err != nil {
-		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == errCodeFirewallExists {
+		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == http.StatusConflict {
 			return nil
 		}
 		return fmt.Errorf("could not create firewall rule %s: %w", firewallRule.Name, err)
@@ -91,7 +92,7 @@ func createFirewallRuleIfNotExist(ctx context.Context, gcpclient gcpclient.Inter
 
 func deleteFirewallRule(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, firewallRuleName string) error {
 	if _, err := gcpclient.Firewalls().Delete(opt.ProjectID, firewallRuleName).Context(ctx).Do(); err != nil {
-		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == errCodeFirewallNotFound {
+		if googleError, ok := err.(*googleapi.Error); ok && googleError.Code == http.StatusNotFound {
 			return nil
 		}
 		return fmt.Errorf("failed to delete firewall rule %s: %w", firewallRuleName, err)
@@ -120,7 +121,7 @@ func getDisk(ctx context.Context, gcpclient gcpclient.Interface, opt *Options) (
 }
 
 func getServiceAccount(ctx context.Context, a *actuator, bastion *v1alpha1.Bastion) (*gcp.ServiceAccount, error) {
-	return gcp.GetServiceAccount(ctx, a.Client(), v1.SecretReference{Namespace: bastion.Namespace, Name: constants.SecretNameCloudProvider})
+	return gcp.GetServiceAccount(ctx, a.Client(), corev1.SecretReference{Namespace: bastion.Namespace, Name: constants.SecretNameCloudProvider})
 }
 
 func createGCPClient(ctx context.Context, serviceAccount *gcp.ServiceAccount) (gcpclient.Interface, error) {
@@ -128,12 +129,12 @@ func createGCPClient(ctx context.Context, serviceAccount *gcp.ServiceAccount) (g
 }
 
 func getWorkersCIDR(cluster *controller.Cluster) (string, error) {
-	InfrastructureConfig := &gcpapi.InfrastructureConfig{}
-	err := json.Unmarshal(cluster.Shoot.Spec.Provider.InfrastructureConfig.Raw, InfrastructureConfig)
+	infrastructureConfig := &gcpapi.InfrastructureConfig{}
+	err := json.Unmarshal(cluster.Shoot.Spec.Provider.InfrastructureConfig.Raw, infrastructureConfig)
 	if err != nil {
 		return "", err
 	}
-	return InfrastructureConfig.Networks.Workers, nil
+	return infrastructureConfig.Networks.Workers, nil
 }
 
 func getDefaultGCPZone(ctx context.Context, gcpclient gcpclient.Interface, opt *Options, region string) (string, error) {

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	gcpclient "github.com/gardener/gardener-extension-provider-gcp/pkg/internal/client"
+
 	"github.com/gardener/gardener/extensions/pkg/controller"
 	ctrlerror "github.com/gardener/gardener/extensions/pkg/controller/error"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
@@ -33,7 +34,7 @@ func (a *actuator) Delete(ctx context.Context, bastion *extensionsv1alpha1.Basti
 
 	serviceAccount, err := getServiceAccount(ctx, a, bastion)
 	if err != nil {
-		return fmt.Errorf("failed to get service Account: %w", err)
+		return fmt.Errorf("failed to get service account: %w", err)
 	}
 
 	gcpClient, err := createGCPClient(ctx, serviceAccount)
@@ -104,7 +105,7 @@ func removeBastionInstance(ctx context.Context, logger logr.Logger, gcpclient gc
 		return fmt.Errorf("failed to terminate bastion instance: %w", err)
 	}
 
-	logger.Info("Instance removed", "rule", opt.BastionInstanceName)
+	logger.Info("Instance removed", "instance", opt.BastionInstanceName)
 	return nil
 }
 
@@ -131,6 +132,6 @@ func removeDisk(ctx context.Context, logger logr.Logger, gcpclient gcpclient.Int
 		return fmt.Errorf("failed to delete disk: %w", err)
 	}
 
-	logger.Info("Disk removed", "rule", opt.DiskName)
+	logger.Info("Disk removed", "disk", opt.DiskName)
 	return nil
 }

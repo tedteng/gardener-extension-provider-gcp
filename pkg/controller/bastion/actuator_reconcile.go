@@ -20,15 +20,15 @@ import (
 	"reflect"
 	"time"
 
-	"k8s.io/apimachinery/pkg/runtime"
-
 	gcpclient "github.com/gardener/gardener-extension-provider-gcp/pkg/internal/client"
+
 	"github.com/gardener/gardener/extensions/pkg/controller"
 	ctrlerror "github.com/gardener/gardener/extensions/pkg/controller/error"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	"github.com/go-logr/logr"
 	"google.golang.org/api/compute/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -37,7 +37,7 @@ import (
 // bastionEndpoints collects the endpoints the bastion host provides; the
 // private endpoint is important for opening a port on the worker node
 // ingress firewall rule to allow SSH from that node, the public endpoint is where
-// the enduser connects to establish the SSH connection.
+// the end user connects to establish the SSH connection.
 type bastionEndpoints struct {
 	private *corev1.LoadBalancerIngress
 	public  *corev1.LoadBalancerIngress
@@ -54,7 +54,7 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 
 	serviceAccount, err := getServiceAccount(ctx, a, bastion)
 	if err != nil {
-		return fmt.Errorf("failed to get service Account: %w", err)
+		return fmt.Errorf("failed to get service account: %w", err)
 	}
 
 	gcpClient, err := createGCPClient(ctx, serviceAccount)
@@ -75,7 +75,7 @@ func (a *actuator) Reconcile(ctx context.Context, bastion *extensionsv1alpha1.Ba
 	}
 
 	err = controller.TryUpdateStatus(ctx, retry.DefaultBackoff, a.Client(), bastion, func() error {
-		bytes, _ := marshalProviderStatus(opt.Zone)
+		bytes, err := marshalProviderStatus(opt.Zone)
 		if err != nil {
 			return err
 		}
@@ -155,7 +155,7 @@ func ensureComputeInstance(ctx context.Context, logger logr.Logger, bastion *ext
 		return instance, err
 	}
 
-	logger.Info("running new bastion compute instance instance")
+	logger.Info("Creating new bastion compute instance")
 	computeInstance := computeInstanceDefine(opt, bastion.Spec.UserData)
 	_, err = gcpclient.Instances().Insert(opt.ProjectID, opt.Zone, computeInstance).Context(ctx).Do()
 	if err != nil {
