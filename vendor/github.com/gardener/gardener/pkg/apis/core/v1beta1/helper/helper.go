@@ -25,7 +25,6 @@ import (
 	versionutils "github.com/gardener/gardener/pkg/utils/version"
 
 	"github.com/Masterminds/semver"
-	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -188,6 +187,8 @@ func ComputeOperationType(meta metav1.ObjectMeta, lastOperation *gardencorev1bet
 		return gardencorev1beta1.LastOperationTypeMigrate
 	case meta.DeletionTimestamp != nil:
 		return gardencorev1beta1.LastOperationTypeDelete
+	case meta.Annotations[v1beta1constants.GardenerOperation] == v1beta1constants.GardenerOperationRestore:
+		return gardencorev1beta1.LastOperationTypeRestore
 	case lastOperation == nil:
 		return gardencorev1beta1.LastOperationTypeCreate
 	case lastOperation.Type == gardencorev1beta1.LastOperationTypeCreate && lastOperation.State != gardencorev1beta1.LastOperationStateSucceeded:
@@ -198,6 +199,13 @@ func ComputeOperationType(meta metav1.ObjectMeta, lastOperation *gardencorev1bet
 		return gardencorev1beta1.LastOperationTypeRestore
 	}
 	return gardencorev1beta1.LastOperationTypeReconcile
+}
+
+// HasOperationAnnotation returns true if the operation annotation is present and its value is "reconcile", "restore, or "migrate".
+func HasOperationAnnotation(meta metav1.ObjectMeta) bool {
+	return meta.Annotations[v1beta1constants.GardenerOperation] == v1beta1constants.GardenerOperationReconcile ||
+		meta.Annotations[v1beta1constants.GardenerOperation] == v1beta1constants.GardenerOperationRestore ||
+		meta.Annotations[v1beta1constants.GardenerOperation] == v1beta1constants.GardenerOperationMigrate
 }
 
 // TaintsHave returns true if the given key is part of the taints list.
@@ -977,7 +985,7 @@ func WrapWithLastError(err error, lastError *gardencorev1beta1.LastError) error 
 	if err == nil || lastError == nil {
 		return err
 	}
-	return errors.Wrapf(err, "last error: %s", lastError.Description)
+	return fmt.Errorf("last error: %w: %s", err, lastError.Description)
 }
 
 // IsAPIServerExposureManaged returns true, if the Object is managed by Gardener for API server exposure.

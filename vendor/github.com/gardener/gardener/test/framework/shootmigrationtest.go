@@ -22,7 +22,7 @@ import (
 	"sort"
 	"strings"
 
-	resourcesv1alpha1 "github.com/gardener/gardener-resource-manager/pkg/apis/resources/v1alpha1"
+	resourcesv1alpha1 "github.com/gardener/gardener-resource-manager/api/resources/v1alpha1"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	"github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
@@ -30,8 +30,6 @@ import (
 	"github.com/gardener/gardener/pkg/utils"
 
 	dnsv1alpha1 "github.com/gardener/external-dns-management/pkg/apis/dns/v1alpha1"
-
-	"github.com/pkg/errors"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -89,7 +87,7 @@ func NewShootMigrationTest(f *GardenerFramework, cfg *ShootMigrationConfig) *Sho
 func (t *ShootMigrationTest) MigrateShoot(ctx context.Context) error {
 	// Dump gardener state if delete shoot is in exit handler
 	if os.Getenv("TM_PHASE") == "Exit" {
-		if shootFramework, err := t.GardenerFramework.NewShootFramework(&t.Shoot); err == nil {
+		if shootFramework, err := t.GardenerFramework.NewShootFramework(ctx, &t.Shoot); err == nil {
 			shootFramework.DumpState(ctx)
 		} else {
 			t.GardenerFramework.DumpState(ctx)
@@ -188,23 +186,24 @@ func (t *ShootMigrationTest) PopulateAfterMigrationComparisonElements(ctx contex
 // CompareElementsAfterMigration compares the Machine details, Node names and Pod statuses before and after migration and returns error if there are diferences.
 func (t *ShootMigrationTest) CompareElementsAfterMigration() error {
 	if !reflect.DeepEqual(t.ComparisonElementsBeforeMigration.MachineNames, t.ComparisonElementsAfterMigration.MachineNames) {
-		return errors.Errorf("initial Machines %s, do not match after-migrate Machines %s", t.ComparisonElementsBeforeMigration.MachineNames, t.ComparisonElementsAfterMigration.MachineNames)
+		return fmt.Errorf("initial Machines %s, do not match after-migrate Machines %s", t.ComparisonElementsBeforeMigration.MachineNames, t.ComparisonElementsAfterMigration.MachineNames)
 	}
 	if !reflect.DeepEqual(t.ComparisonElementsBeforeMigration.MachineNodes, t.ComparisonElementsAfterMigration.MachineNodes) {
-		return errors.Errorf("initial Machine Nodes (label) %s, do not match after-migrate Machine Nodes (label) %s", t.ComparisonElementsBeforeMigration.MachineNodes, t.ComparisonElementsAfterMigration.MachineNodes)
+		return fmt.Errorf("initial Machine Nodes (label) %s, do not match after-migrate Machine Nodes (label) %s", t.ComparisonElementsBeforeMigration.MachineNodes, t.ComparisonElementsAfterMigration.MachineNodes)
 	}
 	if !reflect.DeepEqual(t.ComparisonElementsBeforeMigration.NodeNames, t.ComparisonElementsAfterMigration.NodeNames) {
-		return errors.Errorf("initial Nodes %s, do not match after-migrate Nodes %s", t.ComparisonElementsBeforeMigration.NodeNames, t.ComparisonElementsAfterMigration.NodeNames)
+		return fmt.Errorf("initial Nodes %s, do not match after-migrate Nodes %s", t.ComparisonElementsBeforeMigration.NodeNames, t.ComparisonElementsAfterMigration.NodeNames)
 	}
 	if !reflect.DeepEqual(t.ComparisonElementsAfterMigration.MachineNodes, t.ComparisonElementsAfterMigration.NodeNames) {
-		return errors.Errorf("machine Nodes (label) %s, do not match after-migrate Nodes %s", t.ComparisonElementsAfterMigration.MachineNodes, t.ComparisonElementsAfterMigration.NodeNames)
+		return fmt.Errorf("machine Nodes (label) %s, do not match after-migrate Nodes %s", t.ComparisonElementsAfterMigration.MachineNodes, t.ComparisonElementsAfterMigration.NodeNames)
+
 	}
 	return nil
 }
 
 // Check the timestamp of all objects that the resource-manager creates in the Shoot cluster.
 // The timestamp should not be after the ShootMigrationTest.MigrationTime
-func (t *ShootMigrationTest) CheckObjectsTimestamp(ctx context.Context, mrExcludeList []string) error {
+func (t *ShootMigrationTest) CheckObjectsTimestamp(ctx context.Context, mrExcludeList, resourcesWithGeneratedName []string) error {
 	mrList := &resourcesv1alpha1.ManagedResourceList{}
 	if err := t.TargetSeedClient.Client().List(
 		ctx,
@@ -219,6 +218,10 @@ func (t *ShootMigrationTest) CheckObjectsTimestamp(ctx context.Context, mrExclud
 			if !utils.ValueExists(mr.GetName(), mrExcludeList) {
 				t.GardenerFramework.Logger.Infof("=== Managed Resource: %s/%s ===", mr.Namespace, mr.Name)
 				for _, r := range mr.Status.Resources {
+					if len(r.Name) > 9 && utils.ValueExists(r.Name[:len(r.Name)-9], resourcesWithGeneratedName) {
+						continue
+					}
+
 					obj := &unstructured.Unstructured{}
 					obj.SetAPIVersion(r.APIVersion)
 					obj.SetKind(r.Kind)
@@ -227,11 +230,11 @@ func (t *ShootMigrationTest) CheckObjectsTimestamp(ctx context.Context, mrExclud
 						return err
 					}
 
-					createionTimestamp := obj.GetCreationTimestamp()
-					t.GardenerFramework.Logger.Infof("Object: %s %s/%s Created At: %s", obj.GetKind(), obj.GetNamespace(), obj.GetName(), createionTimestamp)
-					if t.MigrationTime.Before(&createionTimestamp) {
-						t.GardenerFramework.Logger.Errorf("object: %s %s/%s Created At: %s is created after the Shoot migration %s", obj.GetKind(), obj.GetNamespace(), obj.GetName(), createionTimestamp, t.MigrationTime)
-						return errors.Errorf("object: %s %s/%s Created At: %s is created after the Shoot migration %s", obj.GetKind(), obj.GetNamespace(), obj.GetName(), createionTimestamp, t.MigrationTime)
+					creationTimestamp := obj.GetCreationTimestamp()
+					t.GardenerFramework.Logger.Infof("Object: %s %s/%s Created At: %s", obj.GetKind(), obj.GetNamespace(), obj.GetName(), creationTimestamp)
+					if t.MigrationTime.Before(&creationTimestamp) {
+						t.GardenerFramework.Logger.Errorf("object: %s %s/%s Created At: %s is created after the Shoot migration %s", obj.GetKind(), obj.GetNamespace(), obj.GetName(), creationTimestamp, t.MigrationTime)
+						return fmt.Errorf("object: %s %s/%s Created At: %s is created after the Shoot migration %s", obj.GetKind(), obj.GetNamespace(), obj.GetName(), creationTimestamp, t.MigrationTime)
 					}
 				}
 			}
@@ -286,7 +289,7 @@ func (t *ShootMigrationTest) CheckForOrphanedNonNamespacedResources(ctx context.
 		return err
 	}
 	if len(leakedObjects) > 0 {
-		return errors.Errorf("the following object(s) still exists in the source seed %v", leakedObjects)
+		return fmt.Errorf("the following object(s) still exists in the source seed %v", leakedObjects)
 	}
 	return nil
 }

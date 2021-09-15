@@ -74,7 +74,7 @@ func (p *podExecutor) Execute(namespace, name, containerName, command, commandAr
 
 	executor, err := remotecommand.NewSPDYExecutor(p.config, http.MethodPost, request.URL())
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialized the command exector: %v", err)
+		return nil, fmt.Errorf("failed to initialized the command exector: %w", err)
 	}
 
 	err = executor.Stream(remotecommand.StreamOptions{
@@ -103,24 +103,13 @@ func GetPodLogs(ctx context.Context, podInterface corev1client.PodInterface, nam
 	return io.ReadAll(stream)
 }
 
-// ForwardPodPort tries to forward the <remote> port of the pod with name <name> in namespace <namespace> to
-// the <local> port. If <local> equals zero, a free port will be chosen randomly.
-// It returns the stop channel which must be closed when the port forward connection should be terminated.
-func (c *clientSet) ForwardPodPort(namespace, name string, local, remote int) (chan struct{}, error) {
-	fw, stopChan, err := c.setupForwardPodPort(namespace, name, local, remote)
-	if err != nil {
-		return nil, err
-	}
-	return stopChan, fw.ForwardPorts()
-}
-
 // CheckForwardPodPort tries to forward the <remote> port of the pod with name <name> in namespace <namespace> to
 // the <local> port. If <local> equals zero, a free port will be chosen randomly.
 // It returns true if the port forward connection has been established successfully or false otherwise.
 func (c *clientSet) CheckForwardPodPort(namespace, name string, local, remote int) error {
 	fw, stopChan, err := c.setupForwardPodPort(namespace, name, local, remote)
 	if err != nil {
-		return fmt.Errorf("could not setup pod port forwarding: %v", err)
+		return fmt.Errorf("could not setup pod port forwarding: %w", err)
 	}
 
 	errChan := make(chan error)
@@ -131,7 +120,7 @@ func (c *clientSet) CheckForwardPodPort(namespace, name string, local, remote in
 
 	select {
 	case err = <-errChan:
-		return fmt.Errorf("error forwarding ports: %v", err)
+		return fmt.Errorf("error forwarding ports: %w", err)
 	case <-fw.Ready:
 		return nil
 	case <-time.After(time.Second * 5):

@@ -32,7 +32,6 @@ import (
 	"github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
 	machinev1alpha1 "github.com/gardener/machine-controller-manager/pkg/apis/machine/v1alpha1"
-	"github.com/pkg/errors"
 	computev1 "google.golang.org/api/compute/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -68,7 +67,7 @@ func (w *workerDelegate) DeployMachineClasses(ctx context.Context) error {
 
 	// Delete any older version machine class CRs.
 	if err := w.Client().DeleteAllOf(ctx, &machinev1alpha1.GCPMachineClass{}, client.InNamespace(w.worker.Namespace)); err != nil {
-		return errors.Wrapf(err, "cleaning up older version of GCP machine class CRs failed")
+		return fmt.Errorf("cleaning up older version of GCP machine class CRs failed: %w", err)
 	}
 
 	return w.seedChartApplier.Apply(ctx, filepath.Join(gcp.InternalChartsPath, "machineclass"), w.worker.Namespace, "machineclass", kubernetes.Values(map[string]interface{}{"machineClasses": w.machineClasses}))
@@ -138,7 +137,7 @@ func (w *workerDelegate) generateMachineConfig(ctx context.Context) error {
 			}
 		}
 		for _, volume := range pool.DataVolumes {
-			disk, err := createDiskSpecForDataVolume(volume, w.worker.Name, machineImage, false)
+			disk, err := createDiskSpecForDataVolume(volume, w.worker.Name, false)
 			if err != nil {
 				return err
 			}
@@ -238,14 +237,16 @@ func (w *workerDelegate) generateMachineConfig(ctx context.Context) error {
 }
 
 func createDiskSpecForVolume(volume v1alpha1.Volume, workerName string, machineImage string, boot bool) (map[string]interface{}, error) {
-	return createDiskSpec(volume.Size, workerName, machineImage, boot, volume.Type)
+	return createDiskSpec(volume.Size, workerName, boot, &machineImage, volume.Type)
 }
 
-func createDiskSpecForDataVolume(volume v1alpha1.DataVolume, workerName string, machineImage string, boot bool) (map[string]interface{}, error) {
-	return createDiskSpec(volume.Size, workerName, machineImage, boot, volume.Type)
+func createDiskSpecForDataVolume(volume v1alpha1.DataVolume, workerName string, boot bool) (map[string]interface{}, error) {
+	// Don't set machine image for data volumes. Any pre-existing data on the disk can interfere with the boot disk.
+	// See https://github.com/gardener/gardener-extension-provider-gcp/issues/323
+	return createDiskSpec(volume.Size, workerName, boot, nil, volume.Type)
 }
 
-func createDiskSpec(size, workerName, machineImage string, boot bool, volumeType *string) (map[string]interface{}, error) {
+func createDiskSpec(size, workerName string, boot bool, machineImage, volumeType *string) (map[string]interface{}, error) {
 	volumeSize, err := worker.DiskSize(size)
 	if err != nil {
 		return nil, err
@@ -255,10 +256,13 @@ func createDiskSpec(size, workerName, machineImage string, boot bool, volumeType
 		"autoDelete": true,
 		"boot":       boot,
 		"sizeGb":     volumeSize,
-		"image":      machineImage,
 		"labels": map[string]interface{}{
 			"name": workerName,
 		},
+	}
+
+	if machineImage != nil {
+		disk["image"] = *machineImage
 	}
 
 	if volumeType != nil {

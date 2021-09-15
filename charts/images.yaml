@@ -16,23 +16,28 @@ images:
 - name: cloud-controller-manager
   sourceRepository: github.com/gardener/cloud-provider-gcp
   repository: eu.gcr.io/gardener-project/kubernetes/cloud-provider-gcp
-  tag: "v1.18.17"
+  tag: "v1.18.20"
   targetVersion: "1.18.x"
 - name: cloud-controller-manager
   sourceRepository: github.com/gardener/cloud-provider-gcp
   repository: eu.gcr.io/gardener-project/kubernetes/cloud-provider-gcp
-  tag: "v1.19.9"
+  tag: "v1.19.14"
   targetVersion: "1.19.x"
 - name: cloud-controller-manager
   sourceRepository: github.com/gardener/cloud-provider-gcp
   repository: eu.gcr.io/gardener-project/kubernetes/cloud-provider-gcp
-  tag: "v1.20.5"
+  tag: "v1.20.10"
   targetVersion: "1.20.x"
 - name: cloud-controller-manager
   sourceRepository: github.com/gardener/cloud-provider-gcp
   repository: eu.gcr.io/gardener-project/kubernetes/cloud-provider-gcp
-  tag: "v1.21.0"
-  targetVersion: ">= 1.21"
+  tag: "v1.21.4"
+  targetVersion: "1.21.x"
+- name: cloud-controller-manager
+  sourceRepository: github.com/gardener/cloud-provider-gcp
+  repository: eu.gcr.io/gardener-project/kubernetes/cloud-provider-gcp
+  tag: "v1.22.0"
+  targetVersion: ">= 1.22"
 - name: machine-controller-manager
   sourceRepository: github.com/gardener/machine-controller-manager
   repository: eu.gcr.io/gardener-project/gardener/machine-controller-manager
@@ -53,11 +58,11 @@ images:
 - name: csi-attacher
   sourceRepository: github.com/kubernetes-csi/external-attacher
   repository: k8s.gcr.io/sig-storage/csi-attacher
-  tag: "v2.2.0"
+  tag: "v3.3.0"
 - name: csi-snapshotter
   sourceRepository: github.com/kubernetes-csi/external-snapshotter
   repository: k8s.gcr.io/sig-storage/csi-snapshotter
-  tag: "v2.1.5"
+  tag: "v3.0.3"
 - name: csi-resizer
   sourceRepository: github.com/kubernetes-csi/external-resizer
   repository: k8s.gcr.io/sig-storage/csi-resizer
@@ -65,7 +70,7 @@ images:
 - name: csi-snapshot-controller
   sourceRepository: github.com/kubernetes-csi/external-snapshotter
   repository: k8s.gcr.io/sig-storage/snapshot-controller
-  tag: "v2.1.5"
+  tag: "v3.0.3"
 - name: csi-node-driver-registrar
   sourceRepository: github.com/kubernetes-csi/node-driver-registrar
   repository: k8s.gcr.io/sig-storage/csi-node-driver-registrar

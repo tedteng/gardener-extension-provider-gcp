@@ -17,11 +17,11 @@ package genericactuator
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	machinev1alpha1 "github.com/gardener/machine-controller-manager/pkg/apis/machine/v1alpha1"
 	"github.com/go-logr/logr"
-	"github.com/pkg/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,14 +42,14 @@ func (a *genericActuator) Restore(ctx context.Context, worker *extensionsv1alpha
 
 	workerDelegate, err := a.delegateFactory.WorkerDelegate(ctx, worker, cluster)
 	if err != nil {
-		return errors.Wrap(err, "could not instantiate actuator context")
+		return fmt.Errorf("could not instantiate actuator context: %w", err)
 	}
 
 	// Generate the desired machine deployments.
 	logger.Info("Generating machine deployments")
 	wantedMachineDeployments, err := workerDelegate.GenerateMachineDeployments(ctx)
 	if err != nil {
-		return errors.Wrap(err, "failed to generate the machine deployments")
+		return fmt.Errorf("failed to generate the machine deployments: %w", err)
 	}
 
 	// Get the list of all existing machine deployments.
@@ -69,26 +69,26 @@ func (a *genericActuator) Restore(ctx context.Context, worker *extensionsv1alpha
 
 	// Scale the machine-controller-manager to 0. During restoration MCM must not be working
 	if err := a.scaleMachineControllerManager(ctx, logger, worker, 0); err != nil {
-		return errors.Wrap(err, "failed scale down machine-controller-manager")
+		return fmt.Errorf("failed scale down machine-controller-manager: %w", err)
 	}
 
 	// Deploy generated machine classes.
 	if err := workerDelegate.DeployMachineClasses(ctx); err != nil {
-		return errors.Wrapf(err, "failed to deploy the machine classes")
+		return fmt.Errorf("failed to deploy the machine classes: %w", err)
 	}
 
 	if err := kubernetes.WaitUntilDeploymentScaledToDesiredReplicas(ctx, a.client, kutil.Key(worker.Namespace, McmDeploymentName), 0); err != nil && !apierrors.IsNotFound(err) {
-		return errors.Wrap(err, "deadline exceeded while scaling down machine-controller-manager")
+		return fmt.Errorf("deadline exceeded while scaling down machine-controller-manager: %w", err)
 	}
 
 	// Do the actual restoration
 	if err := a.deployMachineSetsAndMachines(ctx, logger, wantedMachineDeployments); err != nil {
-		return errors.Wrap(err, "failed restoration of the machineSet and the machines")
+		return fmt.Errorf("failed restoration of the machineSet and the machines: %w", err)
 	}
 
 	// Generate machine deployment configuration based on previously computed list of deployments and deploy them.
 	if err := a.deployMachineDeployments(ctx, logger, cluster, worker, existingMachineDeployments, wantedMachineDeployments, workerDelegate.MachineClassKind(), true); err != nil {
-		return errors.Wrap(err, "failed to restore the machine deployment config")
+		return fmt.Errorf("failed to restore the machine deployment config: %w", err)
 	}
 
 	return nil
@@ -124,7 +124,7 @@ func (a *genericActuator) deployMachineSetsAndMachines(ctx context.Context, logg
 		for _, machineSet := range machineSets {
 			// Create the MachineSet if not already exists. We do not care about the MachineSet status
 			// because the MCM will update it
-			if err := a.client.Create(ctx, &machineSet); err != nil && !apierrors.IsAlreadyExists(err) {
+			if err := a.client.Create(ctx, &machineSet); kutil.IgnoreAlreadyExists(err) != nil {
 				return err
 			}
 		}
@@ -132,8 +132,7 @@ func (a *genericActuator) deployMachineSetsAndMachines(ctx context.Context, logg
 		// Deploy each machine owned by the MachineSet which was restored above
 		for _, machine := range wantedMachineDeployment.State.Machines {
 			// Create the machine if it not exists already
-			err := a.client.Create(ctx, &machine)
-			if err != nil && !apierrors.IsAlreadyExists(err) {
+			if err := a.client.Create(ctx, &machine); kutil.IgnoreAlreadyExists(err) != nil {
 				return err
 			}
 

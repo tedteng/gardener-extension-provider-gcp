@@ -16,6 +16,7 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"time"
@@ -23,22 +24,18 @@ import (
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
 	"github.com/gardener/gardener/pkg/apis/core/v1beta1/helper"
-	gardenextensionsscheme "github.com/gardener/gardener/pkg/client/extensions/clientset/versioned/scheme"
+
 	"github.com/gardener/gardener/pkg/client/kubernetes"
 	kutil "github.com/gardener/gardener/pkg/utils/kubernetes"
 	"github.com/gardener/gardener/pkg/utils/retry"
 
 	"github.com/onsi/ginkgo"
-	"github.com/pkg/errors"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	apiextensionsscheme "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	corescheme "k8s.io/client-go/kubernetes/scheme"
-	apiregistrationscheme "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/scheme"
-	metricsscheme "k8s.io/metrics/pkg/client/clientset/versioned/scheme"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -184,12 +181,12 @@ func (f *ShootFramework) AddShoot(ctx context.Context, shootName, shootNamespace
 	)
 
 	if err := f.GardenClient.Client().Get(ctx, client.ObjectKey{Namespace: shootNamespace, Name: shootName}, shoot); err != nil {
-		return errors.Wrapf(err, "could not get shoot")
+		return fmt.Errorf("could not get shoot: %w", err)
 	}
 
 	f.CloudProfile, err = f.GardenerFramework.GetCloudProfile(ctx, shoot.Spec.CloudProfileName)
 	if err != nil {
-		return errors.Wrapf(err, "unable to get cloudprofile %s", shoot.Spec.CloudProfileName)
+		return fmt.Errorf("unable to get cloudprofile %s: %w", shoot.Spec.CloudProfileName, err)
 	}
 
 	f.Project, err = f.GetShootProject(ctx, shootNamespace)
@@ -211,24 +208,12 @@ func (f *ShootFramework) AddShoot(ctx context.Context, shootName, shootNamespace
 		return nil
 	}
 
-	shootScheme := runtime.NewScheme()
-	shootSchemeBuilder := runtime.NewSchemeBuilder(
-		corescheme.AddToScheme,
-		apiextensionsscheme.AddToScheme,
-		apiregistrationscheme.AddToScheme,
-		metricsscheme.AddToScheme,
-		gardenextensionsscheme.AddToScheme,
-	)
-	err = shootSchemeBuilder.AddToScheme(shootScheme)
-	if err != nil {
-		return errors.Wrap(err, "could not add schemes to shoot scheme")
-	}
 	if err := retry.UntilTimeout(ctx, k8sClientInitPollInterval, k8sClientInitTimeout, func(ctx context.Context) (bool, error) {
 		shootClient, err = kubernetes.NewClientFromSecret(ctx, f.SeedClient.Client(), ComputeTechnicalID(f.Project.Name, shoot), gardencorev1beta1.GardenerName, kubernetes.WithClientOptions(client.Options{
-			Scheme: shootScheme,
+			Scheme: kubernetes.ShootScheme,
 		}))
 		if err != nil {
-			return retry.MinorError(errors.Wrap(err, "could not construct Shoot client"))
+			return retry.MinorError(fmt.Errorf("could not construct Shoot client: %w", err))
 		}
 		return retry.Ok()
 	}); err != nil {
@@ -306,7 +291,7 @@ func (f *ShootFramework) UpdateShoot(ctx context.Context, update func(shoot *gar
 func (f *ShootFramework) GetCloudProfile(ctx context.Context) (*gardencorev1beta1.CloudProfile, error) {
 	cloudProfile := &gardencorev1beta1.CloudProfile{}
 	if err := f.GardenClient.Client().Get(ctx, client.ObjectKey{Name: f.Shoot.Spec.CloudProfileName}, cloudProfile); err != nil {
-		return nil, errors.Wrap(err, "could not get Seed's CloudProvider in Garden cluster")
+		return nil, fmt.Errorf("could not get Seed's CloudProvider in Garden cluster: %w", err)
 	}
 	return cloudProfile, nil
 }

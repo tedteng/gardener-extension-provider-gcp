@@ -17,6 +17,13 @@ images:
   sourceRepository: github.com/kubernetes/kubernetes/blob/master/build/pause/Dockerfile
   repository: gcr.io/google_containers/pause-amd64
   tag: "3.1"
+  labels:
+  - name: cloud.gardener.cnudie/dso/scanning-hints/binary_id/v1
+    value:
+      policy: skip
+      comment: >
+        pause-container is not accessible from outside k8s clusters and not
+        interacted with from other containers or other systems
 - name: etcd-druid
   sourceRepository: github.com/gardener/etcd-druid
   repository: eu.gcr.io/gardener-project/gardener/etcd-druid
@@ -24,7 +31,7 @@ images:
 - name: gardener-resource-manager
   sourceRepository: github.com/gardener/gardener-resource-manager
   repository: eu.gcr.io/gardener-project/gardener/gardener-resource-manager
-  tag: "v0.24.0"
+  tag: "v0.25.1"
 - name: dependency-watchdog
   sourceRepository: github.com/gardener/dependency-watchdog
   repository: eu.gcr.io/gardener-project/gardener/dependency-watchdog
@@ -75,13 +82,13 @@ images:
 - name: cluster-autoscaler
   sourceRepository: github.com/gardener/autoscaler
   repository: eu.gcr.io/gardener-project/gardener/autoscaler/cluster-autoscaler
-  tag: "v0.16.2"
+  tag: "v0.18.0"
   targetVersion: ">= 1.16"
 - name: cluster-autoscaler
   sourceRepository: github.com/gardener/autoscaler
   repository: eu.gcr.io/gardener-project/gardener/autoscaler/cluster-autoscaler
   targetVersion: "< 1.16"
-  tag: "v0.10.1"
+  tag: "v0.10.2"
 - name: vpn-seed
   sourceRepository: github.com/gardener/vpn
   repository: eu.gcr.io/gardener-project/gardener/vpn-seed
@@ -95,11 +102,11 @@ images:
 - name: alertmanager
   sourceRepository: github.com/prometheus/alertmanager
   repository: quay.io/prometheus/alertmanager
-  tag: v0.18.0
+  tag: v0.22.2
 - name: prometheus
   sourceRepository: github.com/prometheus/prometheus
   repository: quay.io/prometheus/prometheus
-  tag: v2.23.0
+  tag: v2.29.1
 - name: configmap-reloader
   sourceRepository: github.com/jimmidyson/configmap-reload
   repository: quay.io/coreos/configmap-reload
@@ -115,7 +122,7 @@ images:
 - name: grafana
   sourceRepository: github.com/grafana/grafana
   repository: grafana/grafana
-  tag: "7.5.7"
+  tag: "7.5.10"
 - name: blackbox-exporter
   sourceRepository: github.com/prometheus/blackbox_exporter
   repository: quay.io/prometheus/blackbox-exporter
@@ -123,7 +130,7 @@ images:
 - name: metrics-server
   sourceRepository: github.com/kubernetes-sigs/metrics-server
   repository: k8s.gcr.io/metrics-server/metrics-server
-  tag: v0.4.3
+  tag: v0.5.0
 
 # Shoot core addons
 - name: vpn-shoot
@@ -173,32 +180,46 @@ images:
   repository: quay.io/kubernetes-ingress-controller/nginx-ingress-controller
   tag: "0.22.0"
   targetVersion: "< 1.20"
+  labels:
+  - name: cloud.gardener.cnudie/dso/scanning-hints/binary_id/v1
+    value:
+      policy: skip
+      comment: >
+        not deployed as part of gardener infrastructure. Offered to users for development
+        purposes only, accompanied w/ warning that no support be provided.
 - name: nginx-ingress-controller
   sourceRepository: github.com/kubernetes/ingress-nginx
   repository: k8s.gcr.io/ingress-nginx/controller
-  tag: "v0.41.2"
-  targetVersion: ">= 1.20"
+  tag: "v0.49.0"
+  targetVersion: ">= 1.20, < 1.22"
+- name: nginx-ingress-controller
+  sourceRepository: github.com/kubernetes/ingress-nginx
+  repository: k8s.gcr.io/ingress-nginx/controller
+  tag: "v1.0.0"
+  targetVersion: ">= 1.22"
 - name: nginx-ingress-controller-seed
   sourceRepository: github.com/kubernetes/ingress-nginx
   repository: k8s.gcr.io/ingress-nginx/controller
-  tag: "v0.41.2"
+  tag: "v0.49.0"
+  targetVersion: "< 1.22"
+- name: nginx-ingress-controller-seed
+  sourceRepository: github.com/kubernetes/ingress-nginx
+  repository: k8s.gcr.io/ingress-nginx/controller
+  tag: "v1.0.0"
+  targetVersion: ">= 1.22"
 - name: ingress-default-backend
   sourceRepository: github.com/gardener/ingress-default-backend
   repository: eu.gcr.io/gardener-project/gardener/ingress-default-backend
   tag: "0.9.0"
 
 # Miscellaenous
-- name: busybox
-  sourceRepository: github.com/mirror/busybox
-  repository: busybox
-  tag: "1.29.2"
 - name: alpine
   repository: alpine
-  tag: "3.10.3"
+  tag: "3.13.5"
 - name: alpine-iptables
   sourceRepository: github.com/DockToFuture/alpine-iptables
   repository: eu.gcr.io/gardener-project/alpine-iptables
-  tag: "3.10.3"
+  tag: "3.13.5"
 
 # Logging
 - name: fluent-bit
@@ -208,7 +229,7 @@ images:
 - name: fluent-bit-plugin-installer
   sourceRepository: github.com/gardener/logging
   repository: eu.gcr.io/gardener-project/gardener/fluent-bit-to-loki
-  tag: "v0.35.0"
+  tag: "v0.36.2"
 - name: loki
   sourceRepository: github.com/grafana/loki
   repository: grafana/loki
@@ -216,9 +237,9 @@ images:
 - name: loki-curator
   sourceRepository: github.com/gardener/logging
   repository: eu.gcr.io/gardener-project/gardener/loki-curator
-  tag: "v0.35.0"
+  tag: "v0.36.2"
 - name: kube-rbac-proxy
-  sourceRepository: https://github.com/brancz/kube-rbac-proxy
+  sourceRepository: github.com/brancz/kube-rbac-proxy
   repository: quay.io/brancz/kube-rbac-proxy
   tag: v0.8.0
 - name: promtail
@@ -226,9 +247,9 @@ images:
   repository: "docker.io/grafana/promtail"
   tag: "2.1.0"
 - name: telegraf
-  sourceRepository: https://github.com/influxdata/telegraf
-  repository: eu.gcr.io/gardener-project/3rd/telegraf
-  tag: 1.18.0-alpine-iptables
+  sourceRepository: github.com/gardener/logging
+  repository: eu.gcr.io/gardener-project/gardener/telegraf-iptables
+  tag: "v0.36.2"
 
 # VPA
 - name: vpa-admission-controller
